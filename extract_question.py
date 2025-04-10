@@ -1,11 +1,12 @@
 import json
 import uuid  # ⭐ UUID 생성 모듈 추가
 
+
 # 1. 원본 JSON 파일 열기
 with open("SFTdata.json", "r", encoding="utf-8") as f:
     raw_data = json.load(f)
 
-# 2. 필요한 항목만 추출
+# 2.필요한 항목만 추출
 processed_data = []
 
 for item in raw_data["data_info"]:
@@ -13,7 +14,7 @@ for item in raw_data["data_info"]:
     
     if question:
         processed_data.append({
-            "data_id": str(uuid.uuid4()),  # ⭐ 새 UUID 생성
+            "data_id": str(uuid.uuid4()), 
             "question": question
         })
 
