@@ -25,4 +25,4 @@ for item in data:
 with open('data/morpheme_results.json', 'w', encoding='utf-8') as f:
     json.dump(results, f, ensure_ascii=False, indent=2)
 
-print("분석 완료! 형태소 분석 결과가 'morpheme_results.json'에 저장되었습니다.")
+print("형태소 분석 결과가 'morpheme_results.json'에 저장되었습니다.")
