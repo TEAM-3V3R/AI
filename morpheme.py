@@ -28,11 +28,14 @@ def analyze_prompt():
 
     tokens, ratios = analyze_pos(prompt)
 
-    return jsonify({
-        "tokens": [{"word": word, "pos": tag} for word, tag in tokens],
-        "posRatios": ratios,
-        "status": 200
-    }), 200
+    response_data = {
+    "josaSum": ratios.get("Josa", 0.0),
+    "nounSum": ratios.get("Noun", 0.0),
+    "verbSum": ratios.get("Verb", 0.0)
+    }
+
+    return jsonify(response_data), 200
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5002)
