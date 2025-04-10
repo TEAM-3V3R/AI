@@ -20,7 +20,7 @@ def analyze_and_match(text):
 
     return result
 
-@app.route("/categorize", methods=["POST"])
+@app.route("/homonym", methods=["POST"])
 def categorize_prompt():
     data = request.get_json()
     prompt = data.get("promptContent", "").strip()
