@@ -10,7 +10,7 @@ def echo_prompt():
     print(f"[받은 프롬프트]: {prompt}", flush=True)
 
     if not prompt:
-        return jsonify({error: "No prompt content provided."}), 400
+        return jsonify({"error": "No prompt content provided."}), 400
     
     return jsonify({
         "echoedPrompt": prompt,
