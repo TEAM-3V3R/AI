@@ -1,0 +1,4 @@
+Flask
+konlpy
+sentence-transformers
+torch
