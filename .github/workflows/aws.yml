@@ -1,62 +1,53 @@
-name: CI/CD Flask to AWS EC2 via Docker
+name: CI/CD → EC2 via Docker
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 permissions:
   contents: read
 
+env:
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+  DOCKER_IMAGE: ${{ secrets.DOCKER_IMAGE }}
+  EC2_HOST: ${{ secrets.EC2_HOST }}
+  EC2_USER: ${{ secrets.EC2_USER }}
+  EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+
 jobs:
-  # 1) Docker 이미지 빌드 & Docker Hub에 푸시
   build-and-push:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
+      - uses: actions/checkout@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
-
       - name: Log in to Docker Hub
         uses: docker/login-action@v2
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}  # GitHub Secrets에 등록
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Build and push Docker image
+          username: ${{ env.DOCKER_USERNAME }}
+          password: ${{ env.DOCKER_PASSWORD }}
+      - name: Build & push image
         uses: docker/build-push-action@v4
         with:
-          context: .             # 프로젝트 루트
+          context: .
           push: true
-          tags: ${{ secrets.DOCKER_IMAGE }}:latest
+          tags: ${{ env.DOCKER_IMAGE }}:latest
 
-  # 2) EC2에 SSH로 접속해서 최신 컨테이너로 교체
-  deploy:
-    needs: build-and-push      # 1단계가 성공해야 실행됨
+  deploy-to-ec2:
+    needs: build-and-push
     runs-on: ubuntu-latest
-
     steps:
       - name: Deploy to EC2 via SSH
-        # appleboy/ssh-action 을 사용해 EC2에 명령어를 보냄
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ secrets.EC2_HOST }}       # ex: 3.36.142.100
-          username: ${{ secrets.EC2_USER }}   # 보통 'ubuntu'
-          key: ${{ secrets.EC2_SSH_KEY }}      # PEM 키 전체 내용
+          host: ${{ env.EC2_HOST }}
+          username: ${{ env.EC2_USER }}
+          key: ${{ env.EC2_SSH_KEY }}
           script: |
-            # 1) 최신 이미지 내려받기
-            docker pull ${{ secrets.DOCKER_IMAGE }}:latest
-
-            # 2) 기존 컨테이너가 있으면 중지 & 삭제
-            if docker ps -a --format '{{.Names}}' | grep flask_app; then
-              docker stop flask_app
-              docker rm   flask_app
+            docker pull ${{ env.DOCKER_IMAGE }}:latest
+            if docker ps -a --format '{{.Names}}' | grep myapp; then
+              docker stop myapp
+              docker rm   myapp
             fi
-
-            # 3) 새 컨테이너 실행
-            docker run -d \
-              —name flask_app \
-              -p 5000:5000 \
-              ${{ secrets.DOCKER_IMAGE }}:latest
+            docker run -d --name myapp -p 5000:5000 ${{ env.DOCKER_IMAGE }}:latest
