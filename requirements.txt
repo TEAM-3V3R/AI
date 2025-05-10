@@ -2,5 +2,5 @@ Flask
 konlpy
 sentence-transformers
 
--f https://download.pytorch.org/whl/cpu
-torch
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.0.1+cpu
