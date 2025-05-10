@@ -1,4 +1,6 @@
 Flask
 konlpy
 sentence-transformers
+
+-f https://download.pytorch.org/whl/cpu
 torch
