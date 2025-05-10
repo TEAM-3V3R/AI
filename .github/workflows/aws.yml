@@ -2,7 +2,7 @@ name: CI/CD → EC2 via Docker
 
 on:
   pull_request:
-    branches: [main]
+    branches: [dev]
 
 permissions:
   contents: read
