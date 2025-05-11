@@ -1,4 +1,4 @@
-name: CI/CD → EC2
+name: CI/CD → EC2 via Docker
 
 on:
   pull_request:
