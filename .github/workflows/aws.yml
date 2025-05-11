@@ -33,6 +33,7 @@ jobs:
           context: .
           push: true
           tags: ${{ env.DOCKER_IMAGE }}:latest
+          no-cache: true
 
   deploy-to-ec2:
     needs: build-and-push
