@@ -10,5 +10,9 @@ app.register_blueprint(prompt_bp)
 app.register_blueprint(morpheme_bp)
 app.register_blueprint(homonym_bp)
 
+@app.route("/", methods=["GET"])
+def index():
+    return "API 서버가 정상적으로 실행 중입니다"
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5001)
