@@ -2,6 +2,7 @@ from flask import Flask
 from prompt import prompt_bp
 from morpheme import morpheme_bp
 from homonym import homonym_bp
+from sam import sam_bp
 
 app = Flask(__name__)
 
@@ -9,6 +10,7 @@ app = Flask(__name__)
 app.register_blueprint(prompt_bp)
 app.register_blueprint(morpheme_bp)
 app.register_blueprint(homonym_bp)
+app.register_blueprint(sam_bp)
 
 @app.route("/", methods=["GET"])
 def index():
