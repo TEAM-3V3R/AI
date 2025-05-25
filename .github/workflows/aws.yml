@@ -46,7 +46,7 @@ jobs:
       - name: Checkout source files
         uses: actions/checkout@v3
 
-      - name: Debug: check files
+      - name: "Debug: check files"
         run: ls -al
 
       - name: Copy Dockerfile to EC2
