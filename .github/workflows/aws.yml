@@ -58,7 +58,7 @@ jobs:
           host: ${{ env.EC2_HOST }}
           username: ${{ env.EC2_USER }}
           key: ${{ env.EC2_SSH_KEY }}
-          source: "Dockerfile"
+          source: "Dockerfile,requirements.txt"
           target: "/home/ubuntu/myapp/"
 
       - name: Deploy to EC2 via SSH
