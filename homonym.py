@@ -7,6 +7,7 @@ import json
 homonym_bp = Blueprint('homonym', __name__)
 model = SentenceTransformer("BM-K/KoSimCSE-roberta")
 okt = Okt()
+model = None
 
 with open("parsed_dictionary.json", "r", encoding="utf-8") as f:
     homonym_embeddings = json.load(f)
@@ -15,6 +16,14 @@ def extract_context(tokens, index, window=2):
     start = max(index - window, 0)
     end = min(index + window + 1, len(tokens))
     return ' '.join([word for word, _ in tokens[start:end]])
+
+def get_model():
+    global model
+    if model is None:
+        print("모델 로딩 중...")
+        model = SentenceTransformer("BM-K/KoSimCSE-roberta")
+        print("모델 로딩 완료")
+    return model
 
 def get_best_sense(context_embedding, senses):
     best_sim = -1
