@@ -5,7 +5,7 @@ import torch
 import json
 
 homonym_bp = Blueprint('homonym', __name__)
-model = SentenceTransformer("BM-K/KoSimCSE-roberta")
+#model = SentenceTransformer("BM-K/KoSimCSE-roberta")
 okt = Okt()
 model = None
 
@@ -32,9 +32,9 @@ def get_best_sense(context_embedding, senses):
         examples = sense.get("examples", [])
         if not examples:
             continue
-        example_embeddings = model.encode(examples, convert_to_tensor=True)
+        example_embeddings = get_model().encode(examples, convert_to_tensor=True)
         avg_example_embedding = torch.mean(example_embeddings, dim=0)
-        definition_embedding = model.encode(sense["definition"], convert_to_tensor=True)
+        definition_embedding = get_model().encode(sense["definition"], convert_to_tensor=True)
         combined = torch.mean(torch.stack([avg_example_embedding, definition_embedding]), dim=0)
         sim = torch.nn.functional.cosine_similarity(context_embedding, combined, dim=0).item()
         if sim > best_sim:
@@ -55,7 +55,7 @@ def categorize_prompt_text(text):
         if matched_entries:
             if len(matched_entries) > 1:
                 context = extract_context(tokens, i)
-                context_embedding = model.encode(context, convert_to_tensor=True)
+                context_embedding = get_model().encode(context, convert_to_tensor=True)
                 best_entry, best_sense_selected, best_sim = None, None, -1
                 for entry in matched_entries:
                     senses = entry.get("senses", [])
@@ -63,9 +63,9 @@ def categorize_prompt_text(text):
                         continue
                     best_sense = get_best_sense(context_embedding, senses)
                     if best_sense:
-                        example_embeddings = model.encode(best_sense.get("examples", []), convert_to_tensor=True)
+                        example_embeddings = get_model().encode(best_sense.get("examples", []), convert_to_tensor=True)
                         avg_example_embedding = torch.mean(example_embeddings, dim=0)
-                        definition_embedding = model.encode(best_sense["definition"], convert_to_tensor=True)
+                        definition_embedding = get_model().encode(best_sense["definition"], convert_to_tensor=True)
                         combined = torch.mean(torch.stack([avg_example_embedding, definition_embedding]), dim=0)
                         sim = torch.nn.functional.cosine_similarity(context_embedding, combined, dim=0).item()
                         if sim > best_sim:
