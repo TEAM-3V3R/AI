@@ -37,7 +37,9 @@ jobs:
           context: .
           push: true
           tags: ${{ env.DOCKER_IMAGE }}:latest
+                ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
           no-cache: true
+
 
   deploy-to-ec2:
     needs: build-and-push
@@ -66,6 +68,7 @@ jobs:
           key: ${{ env.EC2_SSH_KEY }}
           script: |
             docker pull ${{ env.DOCKER_IMAGE }}:latest
+            docker image prune -a -f
             if docker ps -a --format '{{.Names}}' | grep myapp; then
               docker stop myapp
               docker rm   myapp
