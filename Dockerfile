@@ -7,9 +7,8 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# requirements 설치 전 torch를 먼저 CUDA 12.1 버전으로 명시 설치
 RUN pip3 install --no-cache-dir \
-    torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+    torch==2.2.2 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
 # 나머지 종속성 설치 (sentence-transformers 등)
 COPY requirements.txt .
