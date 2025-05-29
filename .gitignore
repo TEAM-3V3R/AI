@@ -196,3 +196,5 @@ pyrightconfig.json
 
 # specific secret file
 ngrok.exe
+
+DPDT/data/MSCOCO_train_val_Korean.json
