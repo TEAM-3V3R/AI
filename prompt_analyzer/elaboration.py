@@ -1,1 +1,0 @@
-# Elaboration 계산 모듈 : compute_elaboration 함수 구현 예정
