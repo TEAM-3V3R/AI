@@ -1,7 +1,7 @@
-name: CI/CD → EC2 via Docker
+name: CI/CD → EC2 via DockerHub
 
 on:
-  pull_request:
+  push:
     branches: [main]
 
 permissions:
@@ -36,28 +36,15 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ env.DOCKER_IMAGE }}:latest
+          tags: |
+            ${{ env.DOCKER_IMAGE }}:latest
+            ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
           no-cache: true
 
   deploy-to-ec2:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout source files
-        uses: actions/checkout@v3
-
-      - name: "Debug: check files"
-        run: ls -al
-
-      - name: Copy Dockerfile to EC2
-        uses: appleboy/scp-action@master
-        with:
-          host: ${{ env.EC2_HOST }}
-          username: ${{ env.EC2_USER }}
-          key: ${{ env.EC2_SSH_KEY }}
-          source: "Dockerfile"
-          target: "/home/ubuntu/myapp/"
-
       - name: Deploy to EC2 via SSH
         uses: appleboy/ssh-action@master
         with:
@@ -66,8 +53,10 @@ jobs:
           key: ${{ env.EC2_SSH_KEY }}
           script: |
             docker pull ${{ env.DOCKER_IMAGE }}:latest
+            docker container prune -f
             if docker ps -a --format '{{.Names}}' | grep myapp; then
               docker stop myapp
               docker rm   myapp
             fi
-            docker run -d --name myapp -p 5001:5001 ${{ env.DOCKER_IMAGE }}:latest
+            docker run -d --name myapp -p 80:5001 ${{ env.DOCKER_IMAGE }}:latest
+
