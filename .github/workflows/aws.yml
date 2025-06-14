@@ -58,5 +58,6 @@ jobs:
               docker stop myapp
               docker rm   myapp
             fi
-            docker run -d --name myapp -p 80:5001 ${{ env.DOCKER_IMAGE }}:latest
+            docker run -d --name myapp -p 80:5001 --restart=always ${{ env.DOCKER_IMAGE }}:latest
+
 
