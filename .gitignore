@@ -198,3 +198,5 @@ pyrightconfig.json
 ngrok.exe
 
 DPDT/data/MSCOCO_train_val_Korean.json
+__pycache__/
+*.py[cod]
