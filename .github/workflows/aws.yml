@@ -1,7 +1,7 @@
 name: CI/CD → EC2 via DockerHub
 
 on:
-  pull_request:
+  push:
     branches: [main]
 
 permissions:
