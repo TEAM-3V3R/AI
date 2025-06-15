@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # MeCab-ko-dic 설치 (로컬 복사본 기반 빌드)
-COPY DPDT/mecab-ko-dic ./mecab-ko-dic
+COPY DPDT/mecab-ko-dic/final ./mecab-ko-dic
 RUN chmod +x mecab-ko-dic/autogen.sh && \
     cd mecab-ko-dic && ./autogen.sh && ./configure && make && make install && \
     cd .. && rm -rf mecab-ko-dic
