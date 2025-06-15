@@ -4,4 +4,7 @@ sentence-transformers
 numpy<2
 gunicorn
 opencv-python-headless
-segment-anything
+
+torch
+torchvision
+matplotlib
