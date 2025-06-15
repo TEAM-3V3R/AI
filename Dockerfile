@@ -18,7 +18,7 @@ RUN cd mecab-ko-dic && ./autogen.sh
 RUN cd mecab-ko-dic && ./configure
 RUN cd mecab-ko-dic && make
 RUN cd mecab-ko-dic && make install
-    cd .. && rm -rf mecab-ko-dic
+RUN cd .. && rm -rf mecab-ko-dic
     
 # konlpy + PyKoSpacing 설치
 RUN pip install --upgrade pip
