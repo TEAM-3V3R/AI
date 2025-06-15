@@ -9,12 +9,35 @@ import torch
 import os
 from uuid import uuid4
 
+from PIL import Image
+from io import BytesIO
+#import matplotlib.pyplot as plt
+#import matplotlib.patches as patches
+
 sam_bp = Blueprint('sam', __name__)
 
-checkpoint_path = "sam_vit_h_4b8939.pth"
+#checkpoint_path = "sam_vit_h_4b8939.pth"
 model_type = "vit_h"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 sam = None
+
+def download_sam_checkpoint():
+    ckpt_path = "sam_vit_h_4b8939.pth"
+    if not os.path.exists(ckpt_path):
+        try:
+            print("SAM checkpoint 다운로드 중")
+            url = "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth"
+            r = requests.get(url, stream=True)
+            with open(ckpt_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            print("SAM checkpoin 다운로드 완료")
+        except Exception as e:
+            print(f"[ERROR] Checkpoint download failed: {e}")
+            raise RuntimeError("SAM 모델 체크포인트 다운로드 실패")
+    return ckpt_path
+
 
 def initialize_sam():
     global sam
@@ -23,6 +46,7 @@ def initialize_sam():
         if device.type == 'cuda':
             print(f"GPU 모델: {torch.cuda.get_device_name(0)}")
         
+        checkpoint_path = download_sam_checkpoint()
         print("\n모델 로딩 중...")
         sam = sam_model_registry[model_type](checkpoint=checkpoint_path)
         sam.to(device=device)
@@ -48,30 +72,63 @@ def process_image(image):
     new_height = int(height * scale)
     return cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
 
-def extract_objects(image, masks):
+
+#def visualize_sam_result(image, masks):
+#    plt.figure(figsize=(10, 10))
+#    plt.imshow(image)
+#    ax = plt.gca()
+#
+#    for i, mask in enumerate(masks):
+#        m = mask['segmentation']
+#        color = np.random.rand(3,)
+#        ax.imshow(np.dstack((m * color[0], m * color[1], m * color[2], m * 0.35)))  # 반투명 색상
+#
+#        # 경계 박스 그리기
+#        y, x = np.where(m)
+#        if len(x) > 0 and len(y) > 0:
+#            xmin, xmax = np.min(x), np.max(x)
+#            ymin, ymax = np.min(y), np.max(y)
+#            rect = patches.Rectangle((xmin, ymin), xmax - xmin, ymax - ymin,
+#                                     linewidth=1.5, edgecolor=color, facecolor='none')
+#            ax.add_patch(rect)
+#
+#    plt.axis('off')
+#    plt.tight_layout()
+#    plt.show()
+
+
+def extract_objects(image, masks, margin=10):
     objects = []
-    for i, mask in enumerate(masks):
+        
+    for mask in masks:
         binary_mask = mask['segmentation'].astype(np.uint8)
-        y_indices, x_indices = np.where(binary_mask > 0)
-        
-        if len(y_indices) == 0 or len(x_indices) == 0:
+
+        image_rgba = np.zeros((image.shape[0], image.shape[1], 4), dtype=np.uint8)
+        image_rgba[:, :, :3] = image
+        image_rgba[:, :, 3] = binary_mask * 255
+
+        image_pil = Image.fromarray(image_rgba)
+
+        bbox = Image.fromarray(binary_mask * 255).getbbox()
+        if not bbox:
             continue
-            
-        x_min, x_max = np.min(x_indices), np.max(x_indices)
-        y_min, y_max = np.min(y_indices), np.max(y_indices)
-        
-        padding = 10
-        x_min = max(0, x_min - padding)
-        y_min = max(0, y_min - padding)
-        x_max = min(image.shape[1], x_max + padding)
-        y_max = min(image.shape[0], y_max + padding)
-        
-        cut_out = image[y_min:y_max, x_min:x_max]
-        _, buffer = cv2.imencode('.png', cv2.cvtColor(cut_out, cv2.COLOR_RGB2BGR))
-        base64_str = base64.b64encode(buffer).decode('utf-8')
+
+        crop_box = (
+            max(0, bbox[0] - margin),
+            max(0, bbox[1] - margin),
+            min(image_pil.width, bbox[2] + margin),
+            min(image_pil.height, bbox[3] + margin),
+        )
+
+        cropped_image = image_pil.crop(crop_box)
+
+        buffer = BytesIO()
+        cropped_image.save(buffer, format="PNG")
+        base64_str = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
         objects.append({
             "uuid": str(uuid4()),
+            "filename": str(uuid4()),
             "base64Image": base64_str
         })
     
@@ -81,14 +138,14 @@ def generate_uuid():
     return str(uuid4())
 
 def encode_image_to_base64(image):
-    _, buffer = cv2.imencode('.png', cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
-    return base64.b64encode(buffer).decode('utf-8')
+    image_pil = Image.fromarray(image)
+    buffer = BytesIO()
+    image_pil.save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode('utf-8')
 
 @sam_bp.route('/sam', methods=['POST'])
 def handle_sam():
-    try:
-        # start_time = time.time()
-        
+    try:        
         # 1. 이미지 URL 수신
         data = request.get_json()
         if 'resultImage' not in data:
@@ -103,6 +160,10 @@ def handle_sam():
         # 3. SAM 세그멘테이션 실행
         mask_generator = SamAutomaticMaskGenerator(sam)
         masks = mask_generator.generate(resized_image)
+
+        
+        # 🖼️ 결과 시각화
+        #visualize_sam_result(resized_image, masks)
         
         # 4. 객체 추출 및 Base64 인코딩
         cutout_objects = extract_objects(resized_image, masks)
@@ -111,7 +172,6 @@ def handle_sam():
         original_base64 = encode_image_to_base64(resized_image)
 
         # 5. 응답 생성
-        # processing_time = time.time() - start_time
         result = [{
             "uuid": original_uuid,
             "base64Image": original_base64
