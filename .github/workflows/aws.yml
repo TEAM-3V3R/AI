@@ -1,3 +1,4 @@
+
 name: CI/CD → EC2 via DockerHub
 
 on:
@@ -58,5 +59,10 @@ jobs:
               docker stop myapp
               docker rm   myapp
             fi
+
+            docker rmi ${{ env.DOCKER_IMAGE }}:latest || true
+
+            docker pull ${{ env.DOCKER_IMAGE }}:latest
+            
             docker run -d --name myapp -p 80:5001 ${{ env.DOCKER_IMAGE }}:latest
 
