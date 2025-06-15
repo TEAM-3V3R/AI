@@ -13,6 +13,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # MeCab-ko-dic 설치 (로컬 복사본 기반 빌드)
 COPY ./DPDT/mecab-ko-dic/final/ ./mecab-ko-dic/
 RUN ls -al ./mecab-ko-dic/
+
+# 🔧 automake 필수 더미 파일 생성
+RUN touch mecab-ko-dic/AUTHORS mecab-ko-dic/ChangeLog mecab-ko-dic/NEWS mecab-ko-dic/README
+
 RUN chmod +x mecab-ko-dic/autogen.sh
 RUN cd mecab-ko-dic && ./autogen.sh
 RUN cd mecab-ko-dic && ./configure
