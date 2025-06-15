@@ -54,6 +54,12 @@ jobs:
           username: ${{ env.EC2_USER }}
           key: ${{ env.EC2_SSH_KEY }}
           script: |
+            mkdir -p /home/ubuntu/models
+            if [ ! -f /home/ubuntu/models/sam_vit_h_4b8939.pth ]; then
+              echo "모델 다운로드 중..."
+              wget -O /home/ubuntu/models/sam_vit_h_4b8939.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+            fi
+            
             docker pull ${{ env.DOCKER_IMAGE }}:latest
             docker container prune -f
             if docker ps -a --format '{{.Names}}' | grep myapp; then
@@ -65,5 +71,5 @@ jobs:
 
             docker pull ${{ env.DOCKER_IMAGE }}:latest
             
-            docker run -d --name myapp -p 80:5001 ${{ env.DOCKER_IMAGE }}:latest
+            docker run -d --name myapp -v /home/ubuntu/models:/app/models -p 80:5001 ${{ env.DOCKER_IMAGE }}:latest
 
