@@ -2,7 +2,7 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# Python + 기본 도구 설치
+# 시스템 의존성 설치: git, libgl1 (OpenCV), 기타 최소 필수 도구
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     python3-pip \
