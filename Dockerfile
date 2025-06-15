@@ -9,12 +9,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip unzip zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# MeCab-ko 설치 (SOMJANG Colab용 설치 스크립트 사용)
-RUN git clone https://github.com/SOMJANG/Mecab-ko-for-Google-Colab.git && \
-    cd Mecab-ko-for-Google-Colab && \
-    bash install_mecab_ko.sh && \
-    cd .. && rm -rf Mecab-ko-for-Google-Colab
+# MeCab-ko 설치 (GitHub 미러 + 수동 빌드 방식)
+RUN git clone https://github.com/jonghwanhyeon/mecab-ko.git && \
+    cd mecab-ko && ./autogen.sh && ./configure && make && make install && \
+    cd .. && rm -rf mecab-ko
 
+# MeCab-ko-dic 설치
+RUN git clone https://github.com/jonghwanhyeon/mecab-ko-dic.git && \
+    cd mecab-ko-dic && ./autogen.sh && ./configure && make && make install && \
+    cd .. && rm -rf mecab-ko-dic
     
 # konlpy + PyKoSpacing 설치
 RUN pip install --upgrade pip
