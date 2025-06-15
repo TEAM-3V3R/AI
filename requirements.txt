@@ -3,3 +3,4 @@ konlpy
 sentence-transformers
 numpy<2
 gunicorn
+opencv-python-headless
