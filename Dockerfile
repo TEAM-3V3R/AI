@@ -11,7 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # MeCab-ko-dic 설치 (로컬 복사본 기반 빌드)
 COPY DPDT/mecab-ko-dic ./mecab-ko-dic
-RUN cd mecab-ko-dic && ./autogen.sh && ./configure && make && make install && \
+RUN chmod +x mecab-ko-dic/autogen.sh && \
+    cd mecab-ko-dic && ./autogen.sh && ./configure && make && make install && \
     cd .. && rm -rf mecab-ko-dic
     
 # konlpy + PyKoSpacing 설치
