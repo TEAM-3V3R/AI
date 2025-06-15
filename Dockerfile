@@ -9,11 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip unzip zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# MeCab-ko 설치 (로컬 복사본 기반 빌드)
-RUN cd mecab-ko && ./autogen.sh && ./configure && make && make install && \
-    cd .. && rm -rf mecab-ko
-
 # MeCab-ko-dic 설치 (로컬 복사본 기반 빌드)
+COPY DPDT/mecab-ko-dic ./mecab-ko-dic
 RUN cd mecab-ko-dic && ./autogen.sh && ./configure && make && make install && \
     cd .. && rm -rf mecab-ko-dic
     
