@@ -6,7 +6,7 @@ WORKDIR /app
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     python3-pip \
-    mecab libmecab-dev mecab-ipadic-utf8 mecab-config \
+    mecab libmecab-dev mecab-ipadic-utf8 \
     curl git make build-essential \
     && rm -rf /var/lib/apt/lists/*
 
