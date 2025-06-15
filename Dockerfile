@@ -7,6 +7,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends git libgl1 && \
     rm -rf /var/lib/apt/lists/*
 
+RUN pip3 install git+https://github.com/haven-jeon/PyKoSpacing.git
+
 # RUN pip3 install --no-cache-dir \
 #    torch==2.2.2 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
