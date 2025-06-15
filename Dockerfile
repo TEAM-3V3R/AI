@@ -2,27 +2,20 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# 시스템 패키지 설치
+# 시스템 의존성 설치 (MeCab 빌드에 필요한 도구 포함)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl git make build-essential \
     autoconf automake libtool pkg-config \
-    python3-pip ca-certificates file locales unzip \
+    python3-pip unzip zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# MeCab 설치 (정식 tar.gz 버전 사용)
-RUN curl -LO https://bitbucket.org/eunjeon/mecab-ko/downloads/mecab-0.996-ko-0.9.2.tar.gz && \
-    tar zxfv mecab-0.996-ko-0.9.2.tar.gz && \
-    cd mecab-0.996-ko-0.9.2 && \
-    ./configure && make && make install && \
-    cd .. && rm -rf mecab-0.996-ko-0.9.2*
+# MeCab-ko 설치 (로컬 복사본 기반 빌드)
+RUN cd mecab-ko && ./autogen.sh && ./configure && make && make install && \
+    cd .. && rm -rf mecab-ko
 
-# MeCab-ko-dic 설치
-RUN curl -LO https://bitbucket.org/eunjeon/mecab-ko-dic/downloads/mecab-ko-dic-2.1.1-20180720.tar.gz && \
-    tar zxfv mecab-ko-dic-2.1.1-20180720.tar.gz && \
-    cd mecab-ko-dic-2.1.1-20180720 && \
-    ./configure --prefix=/usr/local --with-dicdir=/usr/local/lib/mecab/dic/mecab-ko-dic && \
-    make && make install && \
-    cd .. && rm -rf mecab-ko-dic*
+# MeCab-ko-dic 설치 (로컬 복사본 기반 빌드)
+RUN cd mecab-ko-dic && ./autogen.sh && ./configure && make && make install && \
+    cd .. && rm -rf mecab-ko-dic
     
 # konlpy + PyKoSpacing 설치
 RUN pip install --upgrade pip
