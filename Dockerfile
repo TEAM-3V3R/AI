@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # MeCab-ko 설치 (SOMJANG Colab용 설치 스크립트 사용)
-RUN git clone --depth 1 https://github.com/SOMJANG/Mecab-ko-for-Google-Colab.git && \
+RUN git clone https://github.com/SOMJANG/Mecab-ko-for-Google-Colab.git && \
     cd Mecab-ko-for-Google-Colab && \
     bash install_mecab_ko.sh && \
     cd .. && rm -rf Mecab-ko-for-Google-Colab
