@@ -9,13 +9,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip unzip zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# MeCab-ko 빌드
-RUN git clone https://bitbucket.org/eunjeon/mecab-ko.git && \
+# MeCab-ko 빌드 (GitHub 미러 사용)
+RUN git clone https://github.com/jonghwanhyeon/mecab-ko.git && \
     cd mecab-ko && ./autogen.sh && ./configure && make && make install && \
     cd .. && rm -rf mecab-ko
 
-# MeCab-ko-dic 빌드
-RUN git clone https://bitbucket.org/eunjeon/mecab-ko-dic.git && \
+# MeCab-ko-dic 빌드 (GitHub 미러 사용)
+RUN git clone https://github.com/jonghwanhyeon/mecab-ko-dic.git && \
     cd mecab-ko-dic && ./autogen.sh && ./configure && make && make install && \
     cd .. && rm -rf mecab-ko-dic
     
