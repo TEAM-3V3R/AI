@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # mecab-ko-dic 전체 복사 (GitHub 버전 기준)
-COPY ./DPDT/mecab-ko-dic/ ./mecab-ko-dic/
+COPY ./DPDT/mecab-ko-dic/final/ ./mecab-ko-dic/
 
 # automake 더미 파일 생성 (필요시)
 RUN touch mecab-ko-dic/AUTHORS mecab-ko-dic/ChangeLog mecab-ko-dic/NEWS mecab-ko-dic/README
