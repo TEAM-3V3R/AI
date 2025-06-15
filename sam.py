@@ -55,7 +55,7 @@ def initialize_sam():
         sam.to(device=device)
         print("모델 로딩 완료")
 
-initialize_sam()
+# initialize_sam()
 
 def download_image(url):
     response = requests.get(url)
@@ -148,7 +148,9 @@ def encode_image_to_base64(image):
 
 @sam_bp.route('/sam', methods=['POST'])
 def handle_sam():
-    try:        
+    try:
+        initialize_sam()
+        
         # 1. 이미지 URL 수신
         data = request.get_json()
         if 'resultImage' not in data:
