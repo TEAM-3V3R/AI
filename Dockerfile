@@ -6,13 +6,18 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl git make build-essential \
     autoconf automake libtool pkg-config \
+    libtool-bin m4 g++ \
     python3-pip unzip zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # MeCab-ko-dic 설치 (로컬 복사본 기반 빌드)
 COPY ./DPDT/mecab-ko-dic/final/ ./mecab-ko-dic/
-RUN chmod +x mecab-ko-dic/autogen.sh && \
-    cd mecab-ko-dic && ./autogen.sh && ./configure && make && make install && \
+RUN ls -al ./mecab-ko-dic/
+RUN chmod +x mecab-ko-dic/autogen.sh
+RUN cd mecab-ko-dic && ./autogen.sh
+RUN cd mecab-ko-dic && ./configure
+RUN cd mecab-ko-dic && make
+RUN cd mecab-ko-dic && make install
     cd .. && rm -rf mecab-ko-dic
     
 # konlpy + PyKoSpacing 설치
