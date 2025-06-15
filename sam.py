@@ -46,7 +46,10 @@ def initialize_sam():
         if device.type == 'cuda':
             print(f"GPU 모델: {torch.cuda.get_device_name(0)}")
         
-        checkpoint_path = download_sam_checkpoint()
+        #checkpoint_path = download_sam_checkpoint()
+        checkpoint_path = "/app/models/sam_vit_h_4b8939.pth"
+        if not os.path.exists(checkpoint_path):
+            raise FileNotFoundError(f"SAM Checkpoint not found at {checkpoint_path}")
         print("\n모델 로딩 중...")
         sam = sam_model_registry[model_type](checkpoint=checkpoint_path)
         sam.to(device=device)
