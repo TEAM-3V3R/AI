@@ -7,27 +7,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl git make build-essential \
     autoconf automake libtool pkg-config \
     libtool-bin m4 g++ \
-    python3-pip unzip zlib1g-dev \
+    python3-pip unzip zlib1g-dev mecab \
     && rm -rf /var/lib/apt/lists/*
 
-# MeCab-ko-dic 설치 (로컬 복사본 기반 빌드)
+# MeCab-ko-dic 복사 및 matrix.def 압축 해제
 COPY ./DPDT/mecab-ko-dic/ ./mecab-ko-dic/
-RUN ls -al ./mecab-ko-dic/
-
-# 🔧 automake 필수 더미 파일 생성
-RUN touch mecab-ko-dic/AUTHORS mecab-ko-dic/ChangeLog mecab-ko-dic/NEWS mecab-ko-dic/README
-
-# 🔧 matrix.def 생성
-RUN cd mecab-ko-dic/utils && \
-    g++ -o matrix-builder matrix_builder.cpp && \
-    ./matrix-builder > ../matrix.def
-    
-RUN chmod +x mecab-ko-dic/autogen.sh
-RUN cd mecab-ko-dic && ./autogen.sh
-RUN cd mecab-ko-dic && ./configure
-RUN cd mecab-ko-dic && make
-RUN cd mecab-ko-dic && make install
-RUN cd .. && rm -rf mecab-ko-dic
+RUN unzip ./mecab-ko-dic/matrix_def.zip -d ./mecab-ko-dic/
     
 # konlpy + PyKoSpacing 설치
 RUN pip install --upgrade pip
