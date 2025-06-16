@@ -25,7 +25,7 @@ STOPWORDS_PATH = BASE_DIR / "DPDT" / "data" / "stopwords.txt"
 spacing = Spacing()
 
 # 4) MeCab 사전 경로 지정
-mecab_dic = "C:/Users/user/Desktop/3v3r/AI_wy/AI/DPDT/mecab-ko-dic"
+mecab_dic =  "/app/mecab-ko-dic"
 
 # 5) 형태소 분석기 초기화
 tagger = Mecab(dicpath=mecab_dic)
