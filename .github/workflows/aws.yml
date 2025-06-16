@@ -40,7 +40,7 @@ jobs:
           tags: |
             ${{ env.DOCKER_IMAGE }}:latest
             ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
-          no-cache: true
+          # no-cache: true
 
   deploy-to-ec2:
     needs: build-and-push
