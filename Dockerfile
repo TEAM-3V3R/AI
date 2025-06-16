@@ -14,14 +14,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY ./DPDT/mecab-ko-dic/ ./mecab-ko-dic/
 RUN unzip ./mecab-ko-dic/matrix_def.zip -d ./mecab-ko-dic/
     
-# konlpy + PyKoSpacing 설치
+# 종속성 설치
+COPY requirements.txt .
 RUN pip install --upgrade pip
 RUN pip install konlpy
-RUN pip3 install git+https://github.com/haven-jeon/PyKoSpacing.git
-
-# 나머지 종속성 설치 (sentence-transformers 등)
-COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip3 install git+https://github.com/haven-jeon/PyKoSpacing.git
 
 # segment-anything 설치 (GitHub에서 clone 후 editable install)
 RUN git clone https://github.com/facebookresearch/segment-anything.git && \
