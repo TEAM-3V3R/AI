@@ -15,6 +15,8 @@ RUN echo "[STEP 2] pip 업그레이드 및 konlpy"
 RUN pip install --upgrade pip
 RUN pip install konlpy
 
+# 🔥 MeCab Python 바인딩 설치 (이게 빠져있었음)
+RUN pip install python-mecab-ko
 
 RUN echo "[STEP 3] requirements.txt 설치"
 COPY requirements.txt .
