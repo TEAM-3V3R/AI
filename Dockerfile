@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
     
 RUN pip install --upgrade pip && \
-    pip install konlpy python-mecab-ko
+    pip install --no-cache-dir konlpy mecab-python3
 
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
