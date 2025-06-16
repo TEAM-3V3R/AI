@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip unzip zlib1g-dev mecab libmecab-dev \
     && rm -rf /var/lib/apt/lists/*
     
-RUN pip install --upgrade pip
+RUN pip install --upgrade pip && \
     pip install konlpy python-mecab-ko
 
 COPY requirements.txt .
