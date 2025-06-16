@@ -9,18 +9,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libtool-bin m4 g++ \
     python3-pip unzip zlib1g-dev mecab \
     && rm -rf /var/lib/apt/lists/*
-
-# MeCab-ko-dic 복사 및 matrix.def 압축 해제
-COPY ./DPDT/mecab-ko-dic/ ./mecab-ko-dic/
-RUN unzip ./mecab-ko-dic/matrix_def.zip -d ./mecab-ko-dic/
     
 # 종속성 설치
 RUN pip install --upgrade pip
 RUN pip install konlpy
-RUN pip3 install git+https://github.com/haven-jeon/PyKoSpacing.git
 
 COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
+
+RUN pip3 install git+https://github.com/haven-jeon/PyKoSpacing.git
+
+# MeCab-ko-dic 복사 및 matrix.def 압축 해제
+COPY ./DPDT/mecab-ko-dic/ ./mecab-ko-dic/
+RUN unzip ./mecab-ko-dic/matrix_def.zip -d ./mecab-ko-dic/
 
 # segment-anything 설치 (GitHub에서 clone 후 editable install)
 RUN git clone https://github.com/facebookresearch/segment-anything.git && \
