@@ -64,18 +64,23 @@ jobs:
             #   echo "이미 모델이 존재합니다: $MODEL_PATH"
             # fi
 
+            echo "🧹 기존 컨테이너 제거"
             docker rm -f myapp || true
-            
+
+            echo "🧼 이전 이미지 제거 (캐시 무효화)"
+            docker rmi ${{ env.DOCKER_IMAGE }}:latest || true
+
+            echo "📥 최신 이미지 pull"
             docker pull ${{ env.DOCKER_IMAGE }}:latest
-            
-            # if docker ps -a --format '{{.Names}}' | grep myapp; then
-            #   docker stop myapp
-            #   docker rm   myapp
-            # fi
-            
+
+            echo "🚀 컨테이너 실행"
             docker run -d \
               --name myapp \
               -v /home/ubuntu/models:/app/models \
               -p 80:5001 \
               ${{ env.DOCKER_IMAGE }}:latest
-
+            
+            # if docker ps -a --format '{{.Names}}' | grep myapp; then
+            #   docker stop myapp
+            #   docker rm   myapp
+            # fi
