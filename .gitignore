@@ -199,8 +199,12 @@ ngrok.exe
 
 # DPDT 
 DPDT/data/MSCOCO_train_val_Korean.json
-__pycache__/
 *.py[cod]
+DPDT/data/*.jsonl
+DPDT/data/*.npy
 
 #mecab-ko-dic
 DPDT/mecab-ko-dic/matrix.def
+
+# Hugging Face cache (optional)
+~/.cache/huggingface/
