@@ -31,8 +31,16 @@ with output_path.open("w", encoding="utf-8") as fout:
         tokens = tokenizer(word, return_tensors="pt")
         tokens = {k: v.to(device) for k, v in tokens.items()}
         with torch.no_grad():
-            output = model(**tokens)
-            emb = output.last_hidden_state[:, 0, :]  # CLS 임베딩
+            outputs   = model(**tokens)
+            all_hidden = outputs.last_hidden_state.squeeze(0)  # (seq_len, hidden_dim)
+            # [CLS]=0, [SEP]=-1 제외하고 실제 서브워드 임베딩 평균
+            token_embs = all_hidden[1:-1]  
+            if token_embs.shape[0] == 0:
+                # 만약 단어가 하나의 토큰으로만 분절됐다면, 그 토큰 하나를 사용
+                word_emb = all_hidden[1]
+            else:
+                word_emb = token_embs.mean(0)
+            emb = word_emb.unsqueeze(0)  # (1, hidden_dim)
         fout.write(json.dumps({
             "token": word,
             "emb": emb.squeeze(0).cpu().tolist()
