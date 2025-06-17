@@ -24,7 +24,7 @@ def _init():
         _device    = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         _model.to(_device)
 
-        centroids = np.load(Path("DPDT/data/word_centroids.npy"))
+        centroids = np.load(Path("DPDT/data/word_centroids.npy")).astype(np.float64)
         _kmeans    = KMeans(n_clusters=centroids.shape[0])
         _kmeans.cluster_centers_ = centroids
         _kmeans._n_threads       = 1
@@ -56,7 +56,7 @@ def predict_route():
             toks = _tokenizer(w, return_tensors="pt", add_special_tokens=True)
             toks = {k: v.to(_device) for k, v in toks.items()}
             out  = _model(**toks).last_hidden_state
-            emb  = out[0, 0].cpu().numpy()
+            emb  = out[0, 0].cpu().numpy().astype(np.float64)  # ← 여기서 double 로 변환
 
             cid = int(_kmeans.predict([emb])[0])
             cat = _centroid_to_cat.get(str(cid), "알수없음")
