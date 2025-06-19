@@ -67,7 +67,7 @@ def download_image(url):
 
 def process_image(image):
     height, width = image.shape[:2]
-    target_size = 1000
+    target_size = 512
     if height > width:
         scale = target_size / height
     else:
@@ -166,7 +166,7 @@ def handle_sam():
         # 3. SAM 세그멘테이션 실행
         mask_generator = SamAutomaticMaskGenerator(
             model=sam,
-            points_per_side=16
+            points_per_side=8
         )
         masks = mask_generator.generate(resized_image)
 
