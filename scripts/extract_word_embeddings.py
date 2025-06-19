@@ -1,9 +1,13 @@
 # scripts/extract_word_embeddings.py
 
-import json
+import sys
 from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+import json
 from transformers import AutoTokenizer, AutoModel
 import torch
+from prompt_analyzer.preprocessor import extract_morphs
 
 # 경로 설정
 input_path = Path("DPDT/data/corpus_filtered.txt")
