@@ -17,16 +17,17 @@ from io import BytesIO
 sam_bp = Blueprint('sam', __name__)
 
 #checkpoint_path = "sam_vit_h_4b8939.pth"
-model_type = "vit_h"
+#model_type = "vit_h"
+model_type = "vit_b"
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 sam = None
 
 def download_sam_checkpoint():
-    ckpt_path = "sam_vit_h_4b8939.pth"
+    ckpt_path = "sam_vit_b_01ec64.pth"
     if not os.path.exists(ckpt_path):
         try:
             print("SAM checkpoint 다운로드 중")
-            url = "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth"
+            url = "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
             r = requests.get(url, stream=True)
             with open(ckpt_path, "wb") as f:
                 for chunk in r.iter_content(chunk_size=8192):
@@ -47,7 +48,7 @@ def initialize_sam():
             print(f"GPU 모델: {torch.cuda.get_device_name(0)}")
         
         #checkpoint_path = download_sam_checkpoint()
-        checkpoint_path = "/app/models/sam_vit_h_4b8939.pth"
+        checkpoint_path = "/app/models/sam_vit_b_01ec64.pth"
         if not os.path.exists(checkpoint_path):
             raise FileNotFoundError(f"SAM Checkpoint not found at {checkpoint_path}")
         print("\n모델 로딩 중...")
@@ -66,7 +67,7 @@ def download_image(url):
 
 def process_image(image):
     height, width = image.shape[:2]
-    target_size = 1000
+    target_size = 512
     if height > width:
         scale = target_size / height
     else:
@@ -163,7 +164,14 @@ def handle_sam():
         resized_image = process_image(original_image)
         
         # 3. SAM 세그멘테이션 실행
-        mask_generator = SamAutomaticMaskGenerator(sam)
+        mask_generator = SamAutomaticMaskGenerator(
+            model=sam,
+            points_per_side=4,
+            pred_iou_thresh=0.95,
+            stability_score_thresh=0.95,
+            crop_n_layers=0,
+            min_mask_region_area=512
+        )
         masks = mask_generator.generate(resized_image)
 
         

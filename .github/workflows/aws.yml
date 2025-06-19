@@ -54,15 +54,6 @@ jobs:
           username: ${{ env.EC2_USER }}
           key: ${{ env.EC2_SSH_KEY }}
           script: |
-            # echo "✅ 모델 디렉토리 생성 및 다운로드 (필요 시)"
-            # mkdir -p /home/ubuntu/models
-            # MODEL_PATH="/home/ubuntu/models/sam_vit_h_4b8939.pth"
-            # if [ ! -f "$MODEL_PATH" ]; then
-            #   echo "모델 다운로드 중..."
-            #   wget -q --show-progress -O "$MODEL_PATH" https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
-            # else
-            #   echo "이미 모델이 존재합니다: $MODEL_PATH"
-            # fi
 
             echo "🧹 기존 컨테이너 제거"
             docker rm -f myapp || true
@@ -76,11 +67,8 @@ jobs:
             echo "🚀 컨테이너 실행"
             docker run -d \
               --name myapp \
+              --memory="1.5g" \
               -v /home/ubuntu/models:/app/models \
               -p 80:5001 \
               ${{ env.DOCKER_IMAGE }}:latest
-            
-            # if docker ps -a --format '{{.Names}}' | grep myapp; then
-            #   docker stop myapp
-            #   docker rm   myapp
-            # fi
+
