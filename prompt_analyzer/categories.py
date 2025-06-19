@@ -15,9 +15,10 @@ categories_bp = Blueprint("category", __name__, url_prefix="/category")
 _model_name = "klue/bert-base"
 _tokenizer, _model, _device = None, None, None
 _kmeans, _centroid_to_cat = None, None
+_keyword_to_cat = None
 
 def _init():
-    global _tokenizer, _model, _device, _kmeans, _centroid_to_cat
+    global _tokenizer, _model, _device, _kmeans, _centroid_to_cat, _keyword_to_cat
     if _tokenizer is None:
         _tokenizer = AutoTokenizer.from_pretrained(_model_name, use_fast=True)
         _model     = AutoModel.from_pretrained(_model_name).eval()
@@ -33,6 +34,16 @@ def _init():
             Path("DPDT/data/word_centroid_categories.json")
                 .read_text(encoding="utf-8")
         )
+
+        cat_kw = json.loads(
+            Path("DPDT/data/category_keywords.json")
+            .read_text(encoding="utf-8")
+            )
+        
+        _keyword_to_cat = {}
+        for cat, kws in cat_kw.items():
+            for kw in kws:
+                _keyword_to_cat[kw] = cat
 
 @categories_bp.route("/predict", methods=["POST"])
 def predict_route():
@@ -50,22 +61,29 @@ def predict_route():
     morphs = extract_morphs(text)
     words  = [w for w, _ in morphs]
 
-    categories = {}
+    results = []
     with torch.no_grad():
         for w in words:
+            # --- (1) 사전 기반 룩업 우선 ---
+            if w in _keyword_to_cat:
+                results.append({
+                    "text": w,
+                    "classification": _keyword_to_cat[w]
+                })
+                continue
+
+            # --- (2) 사전 없는 경우에만 임베딩→KMeans 매칭 ---
             toks = _tokenizer(w, return_tensors="pt", add_special_tokens=True)
             toks = {k: v.to(_device) for k, v in toks.items()}
             out  = _model(**toks).last_hidden_state
-            emb  = out[0, 0].cpu().numpy().astype(np.float64)  # ← 여기서 double 로 변환
+            emb  = out[0, 0].cpu().numpy().astype(np.float64)
+            cid  = int(_kmeans.predict([emb])[0])
+            cat  = _centroid_to_cat.get(str(cid), "알수없음")
 
-            cid = int(_kmeans.predict([emb])[0])
-            cat = _centroid_to_cat.get(str(cid), "알수없음")
-            categories[w] = cat
-            
-    results = [
-    {"text": text, "classification": classification}
-       for text, classification in categories.items()
-   ]
+            results.append({
+                "text": w,
+                "classification": cat
+            })
 
     return jsonify({
         "promptId":   promptId,
