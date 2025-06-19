@@ -8,3 +8,5 @@ opencv-python-headless
 torch
 torchvision
 matplotlib
+
+ultralytics
