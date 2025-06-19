@@ -76,6 +76,8 @@ jobs:
             echo "🚀 컨테이너 실행"
             docker run -d \
               --name myapp \
+              --memory="1g" \
+              --memory-swap="-1" \
               -v /home/ubuntu/models:/app/models \
               -p 80:5001 \
               ${{ env.DOCKER_IMAGE }}:latest
