@@ -17,6 +17,7 @@ COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
 RUN pip3 install --no-cache-dir git+https://github.com/haven-jeon/PyKoSpacing.git
+RUN pip install --no-cache-dir git+https://github.com/CASIA-IVA-Lab/FastSAM.git
 
 COPY ./DPDT/mecab-ko-dic/ ./mecab-ko-dic/
 RUN unzip ./mecab-ko-dic/matrix_def.zip -d ./mecab-ko-dic/
