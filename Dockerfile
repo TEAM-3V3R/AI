@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     autoconf automake libtool pkg-config \
     libtool-bin m4 g++ \
     python3-pip unzip zlib1g-dev mecab libmecab-dev \
+    libgl1 \
     && rm -rf /var/lib/apt/lists/*
     
 RUN pip install --upgrade pip && \
