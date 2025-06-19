@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     autoconf automake libtool pkg-config \
     libtool-bin m4 g++ \
     python3-pip unzip zlib1g-dev mecab libmecab-dev \
-    libgl1 \
+#    libgl1 \
     && rm -rf /var/lib/apt/lists/*
     
 RUN pip install --upgrade pip && \
@@ -18,7 +18,7 @@ COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt
 
 RUN pip3 install --no-cache-dir git+https://github.com/haven-jeon/PyKoSpacing.git
-RUN pip install --no-cache-dir git+https://github.com/CASIA-IVA-Lab/FastSAM.git
+#RUN pip install --no-cache-dir git+https://github.com/CASIA-IVA-Lab/FastSAM.git
 
 COPY ./DPDT/mecab-ko-dic/ ./mecab-ko-dic/
 RUN unzip ./mecab-ko-dic/matrix_def.zip -d ./mecab-ko-dic/
