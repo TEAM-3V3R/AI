@@ -164,7 +164,10 @@ def handle_sam():
         resized_image = process_image(original_image)
         
         # 3. SAM 세그멘테이션 실행
-        mask_generator = SamAutomaticMaskGenerator(sam)
+        mask_generator = SamAutomaticMaskGenerator(
+            model=sam,
+            points_per_side=16
+        )
         masks = mask_generator.generate(resized_image)
 
         
