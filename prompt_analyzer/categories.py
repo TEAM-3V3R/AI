@@ -37,13 +37,9 @@ def _init():
 
         cat_kw = json.loads(
             Path("DPDT/data/category_keywords.json")
-            .read_text(encoding="utf-8")
-            )
-        
-        _keyword_to_cat = {}
-        for cat, kws in cat_kw.items():
-            for kw in kws:
-                _keyword_to_cat[kw] = cat
+                .read_text(encoding="utf-8")
+        )
+        _keyword_to_cat = {kw:cat for cat,kws in cat_kw.items() for kw in kws}
 
 @categories_bp.route("/predict", methods=["POST"])
 def predict_route():
@@ -58,22 +54,26 @@ def predict_route():
 
     _init()
 
+    # extract_morphs가 (단어, 품사) 리스트를 리턴
     morphs = extract_morphs(text)
-    words  = [w for w, _ in morphs]
 
     results = []
     with torch.no_grad():
-        for w in words:
+        for word, pos in morphs:
+            # **명사(NNG, NNP, NP) 또는 형용사(VA)만 처리**
+            if pos not in ("NNG","NNP","NP","VA"):
+                continue
+
             # --- (1) 사전 기반 룩업 우선 ---
-            if w in _keyword_to_cat:
+            if word in _keyword_to_cat:
                 results.append({
-                    "text": w,
-                    "classification": _keyword_to_cat[w]
+                    "text": word,
+                    "classification": _keyword_to_cat[word]
                 })
                 continue
 
-            # --- (2) 사전 없는 경우에만 임베딩→KMeans 매칭 ---
-            toks = _tokenizer(w, return_tensors="pt", add_special_tokens=True)
+            # --- (2) 임베딩→KMeans 매칭 ---
+            toks = _tokenizer(word, return_tensors="pt", add_special_tokens=True)
             toks = {k: v.to(_device) for k, v in toks.items()}
             out  = _model(**toks).last_hidden_state
             emb  = out[0, 0].cpu().numpy().astype(np.float64)
@@ -81,11 +81,11 @@ def predict_route():
             cat  = _centroid_to_cat.get(str(cid), "알수없음")
 
             results.append({
-                "text": w,
+                "text": word,
                 "classification": cat
             })
 
     return jsonify({
         "promptId":   promptId,
-        "results":     results
+        "results":    results
     }), 200
