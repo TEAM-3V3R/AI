@@ -9,4 +9,3 @@ torch
 torchvision
 matplotlib
 
-ultralytics
