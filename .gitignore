@@ -197,7 +197,13 @@ pyrightconfig.json
 # specific secret file
 ngrok.exe
 
+# DPDT 
 DPDT/data/MSCOCO_train_val_Korean.json
-__pycache__/
 *.py[cod]
-sam_vit_h_4b8939.pth
+DPDT/data/*.jsonl
+
+#mecab-ko-dic
+DPDT/mecab-ko-dic/matrix.def
+
+# Hugging Face cache (optional)
+~/.cache/huggingface/

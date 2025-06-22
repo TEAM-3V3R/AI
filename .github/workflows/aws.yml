@@ -37,10 +37,10 @@ jobs:
         with:
           context: .
           push: true
+          no-cache: true
           tags: |
             ${{ env.DOCKER_IMAGE }}:latest
             ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
-          no-cache: true
 
   deploy-to-ec2:
     needs: build-and-push
@@ -54,22 +54,21 @@ jobs:
           username: ${{ env.EC2_USER }}
           key: ${{ env.EC2_SSH_KEY }}
           script: |
-            mkdir -p /home/ubuntu/models
-            if [ ! -f /home/ubuntu/models/sam_vit_h_4b8939.pth ]; then
-              echo "모델 다운로드 중..."
-              wget -O /home/ubuntu/models/sam_vit_h_4b8939.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
-            fi
-            
-            docker pull ${{ env.DOCKER_IMAGE }}:latest
-            docker container prune -f
-            if docker ps -a --format '{{.Names}}' | grep myapp; then
-              docker stop myapp
-              docker rm   myapp
-            fi
 
+            echo "🧹 기존 컨테이너 제거"
+            docker rm -f myapp || true
+
+            echo "🧼 이전 이미지 제거 (캐시 무효화)"
             docker rmi ${{ env.DOCKER_IMAGE }}:latest || true
 
+            echo "📥 최신 이미지 pull"
             docker pull ${{ env.DOCKER_IMAGE }}:latest
-            
-            docker run -d --name myapp -v /home/ubuntu/models:/app/models -p 80:5001 ${{ env.DOCKER_IMAGE }}:latest
+
+            echo "🚀 컨테이너 실행"
+            docker run -d \
+              --name myapp \
+              --memory="1.5g" \
+              -v /home/ubuntu/models:/app/models \
+              -p 80:5001 \
+              ${{ env.DOCKER_IMAGE }}:latest
 

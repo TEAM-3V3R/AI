@@ -24,9 +24,8 @@ STOPWORDS_PATH = BASE_DIR / "DPDT" / "data" / "stopwords.txt"
 # 3) 띄어쓰기 교정기 (모델 로딩 비용이 크니 전역에서 한 번만)
 spacing = Spacing()
 
-# 4) MeCab 사전 경로 자동 조회
-dic_root = subprocess.check_output(["mecab-config", "--dicdir"], text=True).strip()
-mecab_dic = f"{dic_root}/mecab-ko-dic"
+# 4) MeCab 사전 경로 지정
+mecab_dic =  "/app/mecab-ko-dic"
 
 # 5) 형태소 분석기 초기화
 tagger = Mecab(dicpath=mecab_dic)
