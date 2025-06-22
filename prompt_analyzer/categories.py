@@ -58,6 +58,7 @@ def predict_route():
     morphs = extract_morphs(text)
 
     results = []
+    seen_cats = set()  # 이미 추가된 카테고리 저장
     with torch.no_grad():
         for word, pos in morphs:
             # **명사(NNG, NNP, NP) 또는 형용사(VA)만 처리**
@@ -70,6 +71,10 @@ def predict_route():
                     "text": word,
                     "classification": _keyword_to_cat[word]
                 })
+                cat = _keyword_to_cat[word]
+                if cat not in seen_cats:
+                    results.append({"text": word, "classification": cat})
+                    seen_cats.add(cat)
                 continue
 
             # --- (2) 임베딩→KMeans 매칭 ---
@@ -84,6 +89,9 @@ def predict_route():
                 "text": word,
                 "classification": cat
             })
+            if cat not in seen_cats:
+                results.append({"text": word, "classification": cat})
+                seen_cats.add(cat)
 
     return jsonify({
         "promptId":   promptId,
