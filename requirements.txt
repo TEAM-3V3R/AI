@@ -9,4 +9,4 @@ torch
 torchvision
 matplotlib
 
-pykospacing
+flask-cors
