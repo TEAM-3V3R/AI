@@ -211,9 +211,14 @@ DPDT/mecab-ko-dic/matrix.def
 # ── 데이터 산출물/대용량 중간 결과 (TRACK X) ────────────────
 AI/DPDT/data/*.npy
 AI/DPDT/data/*.jsonl
-AI/DPDT/data/*.txt
-AI/DPDT/data/*.cleaned.txt
-AI/DPDT/data/*.filtered.txt
+AI/DPDT/data/*_cleaned.txt
+AI/DPDT/data/corpus_filtered.txt
+AI/DPDT/data/corpus_all.cleaned.txt
+AI/DPDT/data/tokens.txt
+AI/DPDT/data/embs.npy
+AI/DPDT/data/tokens_and_embs.jsonl
+AI/DPDT/data/captions_aihub_webtoon*.txt
+AI/DPDT/data/coco_caption_ko*.txt
 
 # ── 모델 결과(학습 산출물) ──
 AI/DPDT/models/*
