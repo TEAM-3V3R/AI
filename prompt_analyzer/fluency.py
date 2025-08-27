@@ -1,30 +1,30 @@
 # prompt_analyzer/fluency.py
 
 import numpy as np
-from sklearn.cluster import KMeans  # 이미 centroids.npy 로 저장해 둔 클러스터 중심 불러올 거예요
-from prompt_analyzer.preprocessor import extract_morphs
-from transformers import AutoTokenizer
-import json
+import torch
+from sklearn.cluster import KMeans
+from transformers import AutoTokenizer, AutoModel
+from AI.prompt_analyzer.preprocessor import extract_morphs
 
 def compute_fluency(
-    texts: list[str],                   # <- raw 문자열 리스트
-    centroids_path: str,                # KMeans 중심 파일
+    texts: list[str],
+    centroids_path: str,
     model_name: str = "skt/kobert-base-v1",
     max_sent: int = 1000,
     weight_s: float = 1.0,
     weight_k: float = 1.0,
     weight_c: float = 1.0,
-) -> float:
-    """
-    texts: ["안개 낀 숲길...", "다른 문장...", ...]
-    0~1 Fluency 점수
-    """
+    return_detail: bool = False,   # <-- 세부값 리턴 옵션
+):
 
     # 1) 형태소 추출
-    token_seqs = [ [w for w,_ in extract_morphs(t)] for t in texts ]
+    token_seqs = [[w for w, _ in extract_morphs(t)] for t in texts]
 
-    # 2) BERT 토크나이저 로드 & 토큰ID 변환
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+    # 2) 토크나이저 & 모델 로드
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+    bert = AutoModel.from_pretrained(model_name).eval()
+
+    # 3) 임베딩
     id_seqs = []
     for seq in token_seqs[:max_sent]:
         encoded = tokenizer(
@@ -36,41 +36,56 @@ def compute_fluency(
         )
         id_seqs.append(encoded["input_ids"])
 
-    # 3) 임베딩 → 클러스터 할당
-    #    (centroids.npy 에 학습해 둔 KMeans cluster centers를 그대로 불러와 predict 만 씁니다)
-    centroids = np.load(centroids_path)       # shape = (n_clusters, emb_dim)
-    kmeans = KMeans(n_clusters=centroids.shape[0])
-    kmeans.cluster_centers_ = centroids
-    kmeans._n_threads = 1                     # thread 설정 해제
-    # (fast predict)
-    # token_ids 하나하나를 임베딩하려면 embedding matrix가 필요하지만, 
-    # 여기서는 미리 토크나이저/모델의 임베딩 레이어를 로드하셔야 합니다.
-    # 예시로 HuggingFace의 KorBERT embedding layer를 사용:
-    from transformers import AutoModel
-    bert = AutoModel.from_pretrained(model_name)
-    bert.eval()
-
     all_embs = []
     for ids in id_seqs:
-        import torch
         with torch.no_grad():
-            out = bert(torch.tensor([ids]))[0]   # (1, seq_len, hidden_dim)
-            # [CLS] 토큰 임베딩만 쓸 수도 있고, 전체 평균 풀링도 가능합니다.
-            cls_emb = out[0,0].numpy()           # (hidden_dim,)
-            all_embs.append(cls_emb)
-    all_embs = np.stack(all_embs, axis=0)      # (n_sent, hidden_dim)
+            out = bert(torch.tensor([ids]))[0]   # (1, L, H)
+            emb = out.mean(dim=1).squeeze(0).numpy()  # 평균 풀링
+            all_embs.append(emb)
+    all_embs = np.stack(all_embs, axis=0).astype(np.float32)
 
-    clusters = kmeans.predict(all_embs)        # (n_sent,)
+    # 4) KMeans predict
+    centroids = np.load(centroids_path).astype(np.float32)
+    kmeans = KMeans(n_clusters=centroids.shape[0], n_init=1)
+    kmeans.cluster_centers_ = centroids
+    kmeans._n_threads = 1
+    clusters = kmeans.predict(all_embs)
 
-    # 4) S, K, C 계산
-    S = min(len(texts), max_sent) / max_sent   # 문장 수 정규화
-    K = len({tok for seq in token_seqs for tok in seq}) / 1000  # 예시로 1000개 최대
+    # 5) S, K, C 계산
+    S = min(len(texts), max_sent) / max_sent
+    K = len({tok for seq in token_seqs for tok in seq}) / 1000
     C = len(set(clusters)) / centroids.shape[0]
 
-    # 5) 가중합 & 0~1 클리핑
+    # 6) 최종 점수
     score = (
         weight_s * S +
         weight_k * K +
         weight_c * C
     ) / (weight_s + weight_k + weight_c)
-    return float(np.clip(score, 0.0, 1.0))
+    score = float(np.clip(score, 0.0, 1.0))
+
+    if return_detail:
+        return score, S, K, C
+    return score
+
+
+# ─────────────────────────────────────
+# 로컬 테스트용
+# ─────────────────────────────────────
+if __name__ == "__main__":
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--centroids", required=True)
+    args = p.parse_args()
+
+    texts = [
+        "안개 낀 숲길을 홀로 걷는 사람",
+        "강아지가 뛰노는 푸른 들판",
+        "도시의 밤거리를 달리는 자동차",
+        "아이들이 공원에서 뛰어노는 장면",
+    ]
+    score, S, K, C = compute_fluency(texts, args.centroids, return_detail=True)
+    print(f"Fluency Score = {score:.4f}")
+    print(f" - S(문장수) = {S:.4f}")
+    print(f" - K(고유토큰수) = {K:.4f}")
+    print(f" - C(클러스터커버리지) = {C:.4f}")
