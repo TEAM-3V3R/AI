@@ -21,7 +21,7 @@ STOPWORDS_PATH: Path = BASE_DIR / "DPDT" / "data" / "stopwords.txt"
 
 # 2) 형태소 분석기 로딩 (MeCab → 실패 시 Okt)
 TAGGER_NAME = None
-tagger = None
+_tagger = None
 
 def _resolve_dicpath() -> str:
     from pathlib import Path
@@ -30,13 +30,13 @@ def _resolve_dicpath() -> str:
         os.environ.get("MECAB_DIC"),
         "/usr/lib/mecab/dic/mecab-ko-dic",
         "/usr/local/lib/mecab/dic/mecab-ko-dic",
-        str((BASE_DIR / "DPDT" / "mecab-ko-dic").resolve()),
-        "/app/DPDT/mecab-ko-dic", 
+        str((BASE_DIR /"mecab-ko-dic").resolve()),
+        "/app/mecab-ko-dic", 
     ]
     for p in candidates:
         if p and Path(p).is_dir():
             return p.replace("\\", "/")
-    return str((BASE_DIR / "DPDT" / "mecab-ko-dic").resolve()).replace("\\", "/")
+    return str((BASE_DIR / "mecab-ko-dic").resolve()).replace("\\", "/")
 
 def _ensure_tagger():
     global _tagger, TAGGER_NAME
