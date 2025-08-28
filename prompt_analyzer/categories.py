@@ -156,12 +156,6 @@ def _predict_super_from_word(word: str) -> str:
 # API
 @categories_bp.route("/predict", methods=["POST"])
 def predict_route():
-    """
-    입력:
-      { "promptId": "...", "promptContent": "텍스트" }
-    출력:
-      { "promptId": "...", "results": [ { "text": "단어", "classification": "<super_name>" }, ... ] }
-    """
     try:
         data = request.get_json(force=True, silent=True) or {}
         prompt_id = data.get("promptId")
@@ -188,7 +182,11 @@ def predict_route():
                 continue
             try:
                 sname = _predict_super_from_word(w)
-                results.append({"text": w, "classification": sname})
+                results.append({
+                    "text": w,
+                    "classification": sname,
+                    "category": sname   
+                })
                 seen_words.add(w)
             except Exception:
                 continue
@@ -201,12 +199,19 @@ def predict_route():
                     continue
                 try:
                     sname = _predict_super_from_word(w)
-                    results.append({"text": w, "classification": sname})
+                    results.append({
+                        "text": w,
+                        "classification": sname,
+                        "category": sname 
+                    })
                     seen_words.add(w)
                 except Exception:
                     continue
 
-        return jsonify({"promptId": prompt_id, "results": results}), 200
+        return jsonify({
+            "promptId": prompt_id,
+            "results": results
+        }), 200
 
     except Exception as e:
         logging.exception("category/predict error")
