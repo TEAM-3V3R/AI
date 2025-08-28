@@ -27,7 +27,7 @@ jobs:
         uses: appleboy/ssh-action@v1.2.1
         with:
           host: ${{ secrets.EC2_HOST_SAM }}
-          username: ${{ secrets.EC2_USER }}
+          username: ${{ secrets.EC2_USER_SAM }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             docker rm -f sam-app || true
@@ -36,5 +36,5 @@ jobs:
             docker run -d --name sam-app \
               --gpus all \
               -p 5002:5002 \
-              -v /home/ubuntu/models:/app/models \
+              -v /home/ec2-user/models:/app/models \
               ${{ secrets.DOCKER_IMAGE_SAM }}:sam-latest
