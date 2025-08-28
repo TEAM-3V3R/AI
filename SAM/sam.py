@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Flask, Blueprint, request, jsonify
 import requests
 import cv2
 import numpy as np
@@ -193,10 +193,8 @@ def handle_sam():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
+app = Flask(__name__)
+app.register_blueprint(sam_bp)
     
 if __name__ == "__main__":
-    from flask import Flask
-    app = Flask(__name__)
-    app.register_blueprint(sam_bp)
-
     app.run(host="0.0.0.0", port=5002)
