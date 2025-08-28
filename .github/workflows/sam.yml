@@ -1,8 +1,8 @@
 name: CI/CD → EC2 (SAM GPU)
 
 on:
-  pull_request:
-    branches: [dev]   
+  push:
+    branches: [main]   
     paths:
       - 'SAM/**'
       - '.github/workflows/sam.yml'
