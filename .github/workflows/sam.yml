@@ -21,7 +21,7 @@ jobs:
           context: ./SAM
           file: SAM/Dockerfile.gpu
           push: true
-          tags: ${{ secrets.DOCKER_IMAGE_SAM }}:sam-latest
+          tags: ${{ secrets.DOCKER_IMAGE }}:sam-latest
 
       - name: Deploy to SAM GPU EC2
         uses: appleboy/ssh-action@v1.2.1
@@ -31,10 +31,10 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             docker rm -f sam-app || true
-            docker rmi ${{ secrets.DOCKER_IMAGE_SAM }}:sam-latest || true
-            docker pull ${{ secrets.DOCKER_IMAGE_SAM }}:sam-latest
+            docker rmi ${{ secrets.DOCKER_IMAGE }}:sam-latest || true
+            docker pull ${{ secrets.DOCKER_IMAGE }}:sam-latest
             docker run -d --name sam-app \
               --gpus all \
               -p 5002:5002 \
               -v /home/ec2-user/models:/app/models \
-              ${{ secrets.DOCKER_IMAGE_SAM }}:sam-latest
+              ${{ secrets.DOCKER_IMAGE }}:sam-latest
