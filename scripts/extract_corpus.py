@@ -3,7 +3,7 @@
 import sys
 import argparse
 from pathlib import Path
-from prompt_analyzer.preprocessor import extract_morphs
+from AI.prompt_analyzer.preprocessor import extract_morphs
 
 def main():
     p = argparse.ArgumentParser(

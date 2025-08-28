@@ -1,82 +1,113 @@
-# prompt_analyzer/preprocessor.py
-
 import os
-# TF가 GPU를 못 보게 만들어서 libdevice 에러 회피
-os.environ["CUDA_VISIBLE_DEVICES"] = ""
 import re
 import logging
-import subprocess
 from pathlib import Path
-from pykospacing import Spacing
-from konlpy.tag import Mecab
+from typing import List, Tuple
 
-# ────────────────────────────────────────────────────────────────
-# 환경 설정
-# ────────────────────────────────────────────────────────────────
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
-# 1) 환경변수로 mecabrc 위치 지정 (konlpy 내부에서 사용)
-os.environ["MECABRC"] = "/etc/mecabrc"
+# 0) 띄어쓰기 교정기 (옵션)
+try:
+    from pykospacing import Spacing
+    spacing = Spacing()
+except Exception:
+    spacing = None
+    logging.warning("[preprocessor] pykospacing 미설치 → 띄어쓰기 교정 건너뜀")
 
-# 2) 프로젝트 루트 및 데이터 경로
-BASE_DIR = Path(__file__).resolve().parent.parent
-STOPWORDS_PATH = BASE_DIR / "DPDT" / "data" / "stopwords.txt"
+# 1) 경로 설정
+BASE_DIR: Path = Path(__file__).resolve().parents[1]
+STOPWORDS_PATH: Path = BASE_DIR / "DPDT" / "data" / "stopwords.txt"
+MECAB_DIC_DIR: Path = (BASE_DIR / "DPDT" / "mecab-ko-dic").resolve()
 
-# 3) 띄어쓰기 교정기 (모델 로딩 비용이 크니 전역에서 한 번만)
-spacing = Spacing()
+# 2) 형태소 분석기 로딩 (MeCab → 실패 시 Okt)
+TAGGER_NAME = None
+tagger = None
 
-# 4) MeCab 사전 경로 지정
-mecab_dic =  "/app/mecab-ko-dic"
+try:
+    from konlpy.tag import Mecab
 
-# 5) 형태소 분석기 초기화
-tagger = Mecab(dicpath=mecab_dic)
+    if MECAB_DIC_DIR.exists():
+        dicpath = str(MECAB_DIC_DIR).replace("\\", "/") 
+        tagger = Mecab(dicpath=dicpath)
+        TAGGER_NAME = f"mecab@{dicpath}"
+    else:
+        tagger = Mecab()
+        TAGGER_NAME = "mecab(default)"
 
-# 6) 불용어 정의
-#    STOP_POS: 제거할 품사 목록 (조사, 어미, 구두점, 접미사 등)
+except Exception as e:
+    logging.warning(f"[preprocessor] Mecab 초기화 실패: {e} → Okt로 폴백")
+    try:
+        from konlpy.tag import Okt
+        tagger = Okt()
+        TAGGER_NAME = "okt"
+    except Exception as e2:
+        raise RuntimeError(
+            "형태소 분석기를 초기화할 수 없습니다. (Mecab/Okt 모두 실패)"
+        ) from e2
+
+# 3) 불용어/필터
 STOP_POS = {
-    "JKS","JKC","JKO","JKB","JX","JC","JKG",
-    "EF","EC","EP","ETN","ETM",
-    "SF","SE","SP","SS","SO",
-    "XSN","XSV"
+    "JKS","JKC","JKO","JKB","JX","JC","JKG",   # 조사
+    "EF","EC","EP","ETN","ETM",                # 어미
+    "SF","SE","SP","SS","SO",                  # 기호
+    "XSN","XSV"                                # 접미사/접속
 }
-#    WORD_STOP: 제거할 단어 목록 (data/stopwords.txt)
-with STOPWORDS_PATH.open(encoding="utf8") as f:
-    WORD_STOP = { w.strip() for w in f if w.strip() and not w.startswith("#") }
 
-# ────────────────────────────────────────────────────────────────
+if STOPWORDS_PATH.exists():
+    with STOPWORDS_PATH.open(encoding="utf-8") as f:
+        WORD_STOP = {w.strip() for w in f if w.strip() and not w.startswith("#")}
+else:
+    WORD_STOP = set()
+
+# 4) 텍스트 정리
 def clean_text(text: str) -> str:
     """
-    1) spacing 모델로 띄어쓰기 보정 (실패 시 원문 유지)
-    2) 한글·공백 외 문자 모두 제거
-    3) 연속된 공백 하나로 합치고 양끝 strip
+    1) 띄어쓰기 보정(가능 시)
+    2) 한글/공백만 유지
+    3) 연속 공백 정리
     """
-    try:
-        text = spacing(text)
-    except Exception as e:
-        logging.warning(f"[clean_text] spacing failed: {e}")
-        # 보정 실패 시 원문 유지
+    if spacing:
+        try:
+            text = spacing(text)
+        except Exception as e:
+            logging.warning(f"[clean_text] spacing failed: {e}")  
 
-    # 한글·공백만 남기기
     text = re.sub(r"[^가-힣\s]", " ", text)
-    # 여러 공백 → 하나
     return re.sub(r"\s+", " ", text).strip()
 
-def extract_morphs(text: str) -> list[tuple[str, str]]:
-    """
-    1) clean_text로 전처리
-    2) MeCab 형태소 분석 → (단어, 품사) 리스트
-    3) STOP_POS, WORD_STOP 조건으로 필터링
-    """
-    cleaned = clean_text(text)
-    morphs = tagger.pos(cleaned)
+# 5) 형태소 분석 + 필터링
+def _pos_mecab(s: str) -> List[Tuple[str, str]]:
+    return tagger.pos(s)
+
+def _pos_okt(s: str) -> List[Tuple[str, str]]:
+    return tagger.pos(s)
+
+COMMON_VERBS = {"하다", "되다", "있다", "없다", "같다", "이다"}
+
+def extract_morphs(text: str):
+    s = clean_text(text)
+    pairs = tagger.pos(s)
 
     result = []
-    for w, pos in morphs:
+    for w, pos in pairs:
         if not w:
+            continue
+        if len(w) == 1:   
             continue
         if w in WORD_STOP:
             continue
         if pos in STOP_POS:
             continue
+        if w in COMMON_VERBS: 
+            continue
         result.append((w, pos))
-
     return result
+
+
+# 6) 테스트
+if __name__ == "__main__":
+    demo = "가디건을입고무표정하게정면을바라보는청년 입니다."
+    print(f"[tagger={TAGGER_NAME}]")
+    print("[raw    ]", demo)
+    print("[cleaned]", clean_text(demo))
+    print("[morphs ]", extract_morphs(demo))

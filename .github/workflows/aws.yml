@@ -39,8 +39,8 @@ jobs:
           push: true
           no-cache: true
           tags: |
-            ${{ env.DOCKER_IMAGE }}:latest
-            ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+            ${{ env.DOCKER_IMAGE }}:flask-latest
+            ${{ env.DOCKER_IMAGE }}:flask-${{ github.sha }}
 
   deploy-to-ec2:
     needs: build-and-push
@@ -54,21 +54,12 @@ jobs:
           username: ${{ env.EC2_USER }}
           key: ${{ env.EC2_SSH_KEY }}
           script: |
-
-            echo "🧹 기존 컨테이너 제거"
             docker rm -f myapp || true
-
-            echo "🧼 이전 이미지 제거 (캐시 무효화)"
-            docker rmi ${{ env.DOCKER_IMAGE }}:latest || true
-
-            echo "📥 최신 이미지 pull"
-            docker pull ${{ env.DOCKER_IMAGE }}:latest
-
-            echo "🚀 컨테이너 실행"
+            docker rmi ${{ env.DOCKER_IMAGE }}:flask-latest || true
+            docker pull ${{ env.DOCKER_IMAGE }}:flask-latest
             docker run -d \
               --name myapp \
               --memory="1.5g" \
-              -v /home/ubuntu/models:/app/models \
               -p 80:5001 \
-              ${{ env.DOCKER_IMAGE }}:latest
+              ${{ env.DOCKER_IMAGE }}:flask-latest
 

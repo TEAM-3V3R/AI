@@ -1,145 +1,218 @@
-# prompt_analyzer/persistence.py
-
-import os
-import argparse
-import json
+# AI/prompt_analyzer/persistence.py
+from __future__ import annotations
 import numpy as np
 import torch
 from pathlib import Path
-from transformers import AutoModel, AutoTokenizer
+from typing import Dict, Optional, Tuple, List
+from collections import Counter
 
+from sklearn.cluster import KMeans
+from transformers import AutoTokenizer, AutoModel
+
+# 형태소 기반 토큰
+try:
+    from AI.prompt_analyzer.preprocessor import extract_morphs
+except Exception:
+    from prompt_analyzer.preprocessor import extract_morphs  
+
+# 임베딩 헬퍼: 강력 방어 + 패딩 무시 평균 풀링
+@torch.no_grad()
+def _embed_sentences(
+    texts: List[str],
+    tokenizer,
+    model,
+    device,
+    max_length: int = 128,
+) -> np.ndarray:
+    """
+    문장 -> 임베딩 (N,H)
+    - token_type_ids: 항상 0으로 강제 (KoBERT 안정화)
+    - input_ids: 항상 vocab 범위로 clamp (out-of-range 방지)
+    - 실패 시 token_type_ids 제거하고 재시도
+    - 패딩 제외 평균 풀링
+    """
+    hidden_size = getattr(model.config, "hidden_size", None)
+    if hidden_size is None:
+        hidden_size = model.embeddings.word_embeddings.embedding_dim
+
+    if len(texts) == 0:
+        return np.zeros((0, hidden_size), dtype=np.float32)
+
+    # 1) 인코딩 
+    enc = tokenizer(
+        texts,
+        return_tensors="pt",
+        padding="max_length",
+        truncation=True,
+        max_length=max_length,
+        add_special_tokens=True,
+        return_attention_mask=True,
+    )
+
+    # 2) 항상 segment를 0으로 강제
+    ttids = torch.zeros_like(enc["input_ids"], dtype=torch.long)
+    enc["token_type_ids"] = ttids
+
+    # 3) 디바이스 이동
+    enc = {k: v.to(device) for k, v in enc.items()}
+
+    # 4) vocab 범위로 clamp 
+    V = model.embeddings.word_embeddings.num_embeddings
+    enc["input_ids"] = enc["input_ids"].clamp_(0, V - 1)
+
+    # 5) Forward with robust fallback
+    def _forward_and_pool(e):
+        out = model(**e).last_hidden_state  # (B, L, H)
+        mask = e["attention_mask"].unsqueeze(-1).float()  # (B, L, 1)
+        masked = out * mask
+        sum_vec = masked.sum(dim=1)              # (B, H)
+        len_vec = mask.sum(dim=1).clamp_min(1.0) # (B, 1)
+        pooled = sum_vec / len_vec               # (B, H)
+        return pooled
+
+    try:
+        sent_embs = _forward_and_pool(enc)
+    except IndexError:
+        enc_no_seg = {k: v for k, v in enc.items() if k != "token_type_ids"}
+        sent_embs = _forward_and_pool(enc_no_seg)
+
+    return sent_embs.detach().cpu().numpy().astype(np.float32)
+
+
+# 핵심: Persistence (Simpson/Herfindahl)
 def compute_persistence(
-    texts_or_idlists,        # “문장 리스트(str)” or “ID 리스트(list of list of ints)”
+    texts: List[str],
     centroids_path: str,
     model_name: str = "skt/kobert-base-v1",
-):
-    """
-    Persistence 점수 계산 (토큰 수준 클러스터링 버전)
-    - texts_or_idlists: 
-        • 문자열 리스트라면, 내부에서 tokenizer를 거쳐 ID로 변환
-        • 이미 ID 배열 리스트([ [517,0,490,…], [517,491,…], … ])라면 그대로 사용
-    """
+    *,
+    # 가중치
+    weight_s: float = 1.0,
+    weight_r: float = 1.0,
+    weight_f: float = 1.0,
+    # 포화/소표본 패널티 민감도
+    tau_s: float = 3.0,    # S: 문장 수 포화
+    tau_r: float = 1.0,   # R: 토큰 수 소표본 패널티
+    tau_f: float = 5.0,   # F: 문장 수 소표본 패널티
+    resources: Optional[Dict] = None,
+) -> Tuple[float, float, float, float]:
 
-    # 1) BERT 모델 + 토크나이저 불러오기
-    device = torch.device("cpu")
-    model = AutoModel.from_pretrained(model_name).to(device)
-    model.eval()
-
-    # AutoTokenizer도 미리 불러 두면 편합니다.
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-    # 2) 센트로이드 로딩
-    centroids = np.load(centroids_path)  # shape = (n_clusters, hidden_dim)
-
-    # 3) 입력 타입 검사(문장(str) vs ID 리스트)
-    is_idlists = isinstance(texts_or_idlists[0], (list, tuple))
-
-    assigned_clusters = []
-
-    with torch.no_grad():
-        for entry in texts_or_idlists:
-            if is_idlists:
-                # entry가 “이미 ID 리스트”인 경우
-                token_ids = torch.tensor([entry], dtype=torch.long, device=device)
-                attention_mask = (token_ids != 0).long()
-            else:
-                # entry가 “문자열 문장”인 경우 → 미리 형태소 레벨 clean_text나 
-                # 띄어쓰기 교정이 되어 있어서, 단순히 split()해서 사용한다고 가정
-                encoded = tokenizer(
-                    entry.split(), 
-                    is_split_into_words=True,
-                    add_special_tokens=True,
-                    padding=True,
-                    # truncation=True,
-                    return_tensors="pt"
-                )
-                token_ids = encoded["input_ids"].to(device)
-                attention_mask = encoded["attention_mask"].to(device)
-
-            # (A) [batch_size=1, seq_len] → BERT 임베딩
-            outputs = model(input_ids=token_ids, attention_mask=attention_mask)
-            last_hidden = outputs.last_hidden_state  # (1, seq_len, hidden_dim)
-
-            # (B) 각 토큰(t=0~seq_len-1)별로 벡터 추출
-            #     last_hidden[0, t, :] 형태로 hidden_dim 벡터 얻음
-            #     그러면 총 seq_len개 토큰별 임베딩이 생김
-            seq_len = last_hidden.shape[1]
-            for t in range(seq_len):
-                token_emb = last_hidden[0, t, :].cpu().numpy()  # (hidden_dim,)
-                
-                # (C) 각 토큰 임베딩과 모든 centroids 사이의 코사인 유사도 계산
-                #     centroids: (n_clusters, hidden_dim)
-                #     token_emb: (hidden_dim,)
-                #     → 코사인(sim) = (centroids · token_emb) / (‖centroids‖ · ‖token_emb‖)
-                dot = centroids @ token_emb   # (n_clusters,)
-                norms = np.linalg.norm(centroids, axis=1) * np.linalg.norm(token_emb)
-                cosines = dot / (norms + 1e-12)
-
-                # (D) 가장 가까운 클러스터 인덱스 취함
-                cluster_id = int(np.argmax(cosines))
-                assigned_clusters.append(cluster_id)
-
-    # 4) “토큰 단위로 할당된 cluster_id들”을 기반으로 분포 계산
-    assigned_clusters = np.array(assigned_clusters)
-    if assigned_clusters.size == 0:
-        return 0.0
-
-    unique, counts = np.unique(assigned_clusters, return_counts=True)
-    freqs = counts / counts.sum()
-
-    # 5) 엔트로피 → 0~1 정규화 (cluster 개수 대신 “토큰 분포에 나온 클러스터 수” 사용)
-    entropy = -np.sum(freqs * np.log(freqs + 1e-12))
-    max_entropy = np.log(len(freqs)) if len(freqs) > 1 else 1.0
-    persistence_score = entropy / (max_entropy + 1e-12)
-
-    return float(persistence_score)
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Persistence(지속성) 점수를 계산합니다."
-    )
-    parser.add_argument(
-        "-i", "--input",
-        required=True,
-        help="Persistence를 계산할 입력. ■텍스트(.txt) or ■ID 배열(.txt) 파일"
-    )
-    parser.add_argument(
-        "-c", "--centroids",
-        required=True,
-        help="학습된 클러스터 센트로이드 파일 경로 (예: data/centroids.npy)"
-    )
-    parser.add_argument(
-        "-m", "--model",
-        default="skt/kobert-base-v1",
-        help="HuggingFace BERT 모델 이름"
-    )
-    args = parser.parse_args()
-
-    from pathlib import Path
-    input_path = Path(args.input)
-    lines = [l.strip() for l in input_path.open(encoding="utf8") if l.strip()]
-
-    first = None
-    try:
-        first = json.loads(lines[0])
-    except:
-        first = lines[0]
-
-    if isinstance(first, list):
-        # “tokens.txt”처럼 ID 배열이 저장된 경우
-        id_lists = [json.loads(line) for line in lines]
-        score = compute_persistence(
-            id_lists,
-            centroids_path=args.centroids,
-            model_name=args.model
-        )
+    # 모델/토크나이저/디바이스/센트로이드 
+    if resources and {"tokenizer", "model", "device"} <= set(resources.keys()):
+        tokenizer = resources["tokenizer"]
+        model = resources["model"]
+        device = resources["device"]
     else:
-        # 순수 텍스트(“한 줄에 한 문장”)인 경우
-        score = compute_persistence(
-            texts_or_idlists=lines,
-            centroids_path=args.centroids,
-            model_name=args.model
-        )
+        tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
+        model = AutoModel.from_pretrained(model_name).eval()
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model.to(device)
 
-    print(f"Persistence 점수: {score:.4f}")
+    if resources and isinstance(resources.get("centroids"), np.ndarray):
+        cents = resources["centroids"].astype(np.float32, copy=False)
+    else:
+        cents = np.load(centroids_path)
+        if cents.dtype != np.float32:
+            cents = cents.astype(np.float32, copy=False)
+
+    K_clusters = int(cents.shape[0])
+
+    # S: 문장 수 포화 (0~1) 
+    N = len(texts)
+    modifiers = 0
+    for t in texts:
+        morphs = extract_morphs(t)
+        for w, pos in morphs:
+            if pos in ("VA", "MAG", "MM",  "Adjective", "Adverb", "Determiner"): 
+                modifiers += 1
+    
+    S = float(1.0 - np.exp(-float(modifiers) / tau_s))
+
+    #  R: 어휘 집중도
+    flat_tokens: List[str] = []
+    for t in texts:
+        toks = [w for (w, _pos) in extract_morphs(t)]
+        flat_tokens.extend(toks)
+
+    T = len(flat_tokens)
+    if T > 0:
+        cnts = np.array(list(Counter(flat_tokens).values()), dtype=np.float64)
+        beta = 1.3  #
+        w = cnts ** beta
+        p = w / w.sum()
+        simpson_R = np.sum(p * p)
+        small_pen_r = 1.0 - np.exp(-float(T) / float(tau_r))
+        R = (simpson_R * small_pen_r)
+
+        R = max(R, 0.2)
+
+        entropy = -np.sum(p * np.log(p+1e-12)) / np.log(len(p)+1e-12)
+        R = float(0.5 * simpson_R + 0.5 * entropy)
+    else:
+        R = 0.0
+
+    # F: 클러스터 집중도(심프슨) ─
+    embs = _embed_sentences(texts, tokenizer, model, device, max_length=128)  
+    if embs.shape[0] > 0:
+        km = KMeans(n_init=1, random_state=42, n_clusters=K_clusters)
+        km.cluster_centers_ = cents
+        km._n_threads = 1
+        labels = km.predict(embs) 
+
+        counts = np.zeros(K_clusters, dtype=np.float64)
+        for k, v in Counter(labels).items():
+            idx = int(k)
+            if 0 <= idx < K_clusters:
+                counts[idx] = v
+        q = counts / max(counts.sum(), 1e-12)
+        simpson_F = float(np.sum(q * q))
+        small_pen_f = 1.0 - np.exp(-float(N) / float(tau_f))
+        F = float(np.clip(simpson_F * small_pen_f, 0.0, 1.0))
+    else:
+        F = 0.0
+
+    #  최종 점수 (가중합 → 0~100) 
+    wS, wR, wF = float(weight_s), float(weight_r), float(weight_f)
+    denom = max(wS + wR + wF, 1e-12)
+    score01 = (wS * S + wR * R + wF * F) / denom
+    score01 = float(np.clip(score01, 0.0, 1.0))
+
+    return score01 * 100.0, S * 100.0, R * 100.0, F * 100.0
+
+
+# 로컬 테스트 
+if __name__ == "__main__":
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Persistence (Simpson/Herfindahl)")
+    ap.add_argument("--centroids", required=True, help="centroids.npy 경로")
+    ap.add_argument("--model", default="skt/kobert-base-v1")
+    ap.add_argument("--w_s", type=float, default=1.0)
+    ap.add_argument("--w_r", type=float, default=1.0)
+    ap.add_argument("--w_f", type=float, default=1.0)
+    ap.add_argument("--tau_s", type=float, default=8.0)
+    ap.add_argument("--tau_r", type=float, default=30.0)
+    ap.add_argument("--tau_f", type=float, default=20.0)
+    args = ap.parse_args()
+
+    texts = [
+        "안개 낀 숲길을 홀로 걷는 사람",
+        "강아지가 뛰노는 푸른 들판",
+        "도시의 밤거리를 달리는 자동차",
+        "아이들이 공원에서 뛰어노는 장면",
+    ]
+
+    score, S, R, F = compute_persistence(
+        texts,
+        centroids_path=args.centroids,
+        model_name=args.model,
+        weight_s=args.w_s,
+        weight_r=args.w_r,
+        weight_f=args.w_f,
+        tau_s=args.tau_s,
+        tau_r=args.tau_r,
+        tau_f=args.tau_f,
+    )
+    print(f"Persistence Score = {score:.4f}")
+    print(f" - S(size)                 = {S:.4f}")
+    print(f" - R(lexical concentration)= {R:.4f}")
+    print(f" - F(cluster focus)        = {F:.4f}")
