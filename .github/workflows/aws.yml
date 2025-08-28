@@ -4,6 +4,8 @@ name: CI/CD → EC2 via DockerHub
 on:
   push:
     branches: [main]
+    paths-ignore:   
+      - 'SAM/**'      
 
 permissions:
   contents: read
