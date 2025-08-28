@@ -1,0 +1,40 @@
+name: CI/CD → EC2 (SAM GPU)
+
+on:
+  push:
+    branches: [dev]   
+
+jobs:
+  build-and-deploy-sam:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build & Push SAM image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./SAM
+          file: SAM/Dockerfile.gpu
+          push: true
+          tags: ${{ secrets.DOCKER_IMAGE_SAM }}:sam-latest
+
+      - name: Deploy to SAM GPU EC2
+        uses: appleboy/ssh-action@v1.2.1
+        with:
+          host: ${{ secrets.EC2_HOST_SAM }}
+          username: ${{ secrets.EC2_USER_SAM }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            docker rm -f sam-app || true
+            docker rmi ${{ secrets.DOCKER_IMAGE_SAM }}:sam-latest || true
+            docker pull ${{ secrets.DOCKER_IMAGE_SAM }}:sam-latest
+            docker run -d --name sam-app \
+              --gpus all \
+              -p 5002:5002 \
+              -v /home/ec2-user/models:/app/models \
+              ${{ secrets.DOCKER_IMAGE_SAM }}:sam-latest
