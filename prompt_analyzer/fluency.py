@@ -14,7 +14,7 @@ def compute_fluency(
     weight_s: float = 1.0,
     weight_k: float = 1.0,
     weight_c: float = 1.0,
-    floor_k: float = 0.20,   # ← K 최소치(0~1). 0.20이면 20점 보장
+    floor_k: float = 0.20,
 ):
     # 1) 형태소 → 토큰 시퀀스
     token_seqs = [[w for w, _ in extract_morphs(t)] for t in texts]
@@ -37,8 +37,8 @@ def compute_fluency(
     all_embs = []
     for ids in id_seqs:
         with torch.no_grad():
-            out = model(torch.tensor([ids]))[0]       # (1, L, H)
-            emb = out.mean(dim=1).squeeze(0).numpy()  # mean pooling
+            out = model(torch.tensor([ids]))[0]
+            emb = out.mean(dim=1).squeeze(0).numpy()  
             all_embs.append(emb)
     all_embs = np.stack(all_embs, axis=0).astype(np.float32) if all_embs else np.zeros((0, 768), np.float32)
 
@@ -58,21 +58,21 @@ def compute_fluency(
     # S: 문장수 포화
     tau_s = 8.0
     S = float(1.0 - np.exp(-float(N) / tau_s))
-    
-    # K: 어휘 다양성(엔트로피 정규화 + 소표본 패널티)
+
+    # K: 어휘 다양성
     if T > 0 and U > 1:
         from collections import Counter
         cnts = np.array(list(Counter(flat_tokens).values()), dtype=np.float64)
         p = cnts / cnts.sum()
         H = -np.sum(p * np.log(p + 1e-12))
-        H_norm = H / np.log(min(U, 500) + 1e-12)      # 정규화 기준 500 타입
-        tau_k = 20.0                                  # 소표본 패널티 민감도
+        H_norm = H / np.log(min(U, 500) + 1e-12)      
+        tau_k = 20.0                                  # 패널티 민감도
         small_pen_k = 1.0 - np.exp(-float(T) / tau_k)
         K = float(np.clip(H_norm * small_pen_k, 0.0, 1.0))
     else:
         K = 0.0
 
-    # C: 클러스터 커버리지(엔트로피 + 소표본 패널티)
+    # C: 클러스터 커버리지
     if len(clusters) > 0:
         from collections import Counter
         K_clusters = int(cents.shape[0])
@@ -89,11 +89,11 @@ def compute_fluency(
     else:
         C = 0.0
 
-    # floor_k 스케일 보정 (퍼센트 입력 가능)
+    # floor_k 스케일 보정 
     if floor_k > 1.0:
         floor_k = floor_k / 100.0
 
-    # 5) 바닥 점수(floor) 적용 (K만 적용)
+    # 5) 바닥 점수(floor) 적용 (K만)
     if floor_k is not None:
         K = max(K, float(floor_k))
 

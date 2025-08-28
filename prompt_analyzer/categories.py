@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # AI/prompt_analyzer/categories.py
 
 import os
@@ -12,15 +11,12 @@ from flask import Blueprint, request, jsonify
 from sklearn.cluster import KMeans
 from transformers import AutoTokenizer, AutoModel
 
-# 상대/절대 import 상황 모두 대응 (개발 편의용)
 try:
     from .preprocessor import extract_morphs
 except ImportError:
     from AI.prompt_analyzer.preprocessor import extract_morphs
 
-# ─────────────────────────────────────────
 # 환경/로그
-# ─────────────────────────────────────────
 os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
 os.environ.setdefault("TRANSFORMERS_NO_FLAX", "1")
 os.environ.setdefault("TRANSFORMERS_NO_JAX", "1")
@@ -29,41 +25,34 @@ logging.getLogger().setLevel(logging.INFO)
 
 categories_bp = Blueprint("category", __name__, url_prefix="/category")
 
-# ─────────────────────────────────────────
-# 경로 (super 전용)
-# ─────────────────────────────────────────
-AI_DIR     = Path(__file__).resolve().parents[1]          # .../AI
+AI_DIR     = Path(__file__).resolve().parents[1]         
 DPDT_DIR   = AI_DIR / "DPDT"
 DATA_DIR   = DPDT_DIR / "data"
 MODELS_DIR = DPDT_DIR / "models"
 
 CENTROIDS_PATH  = MODELS_DIR / "kmeans_k100" / "centroids.npy"
-RUNTIME_JSON    = DATA_DIR / "runtime_categories.json"    # 권장(우선)
-SUPER_MAP_JSON  = DATA_DIR / "super_map.json"             # 폴백
-SUPER_NAMES_JSON= DATA_DIR / "super_names.json"           # 폴백
+RUNTIME_JSON    = DATA_DIR / "runtime_categories.json"    
+SUPER_MAP_JSON  = DATA_DIR / "super_map.json"            
+SUPER_NAMES_JSON= DATA_DIR / "super_names.json"          
 
-# ─────────────────────────────────────────
 # 전역 리소스
-# ─────────────────────────────────────────
 _model_name = "klue/bert-base"
 _tokenizer = None
 _model = None
 _device = None
 _kmeans = None
 
-_centroid_to_super = None     # list[int], len=K
-_super_names = None           # dict[str(sid)] -> name
+_centroid_to_super = None   
+_super_names = None           
 
 # 품사 허용( MeCab + Okt )
 POS_ALLOWED = {"NNG", "NNP", "NP", "VA", "Noun", "Adjective"}
 
-# (선택) 키워드 → super 이름 매핑파일이 있다면 사용 (없어도 동작)
+
 KW2SUPER_JSON = DATA_DIR / "category_keywords.json"
 _kw2super = {}
 
-# ─────────────────────────────────────────
 # 리소스 로드
-# ─────────────────────────────────────────
 def _load_super_mapping():
     """runtime_categories.json 우선, 없으면 super_map.json(+super_names.json)"""
     global _centroid_to_super, _super_names
@@ -81,7 +70,6 @@ def _load_super_mapping():
         logging.info("[categories] mapping: runtime_categories.json loaded")
         return
 
-    # 폴백
     if not SUPER_MAP_JSON.exists():
         raise FileNotFoundError(
             f"super mapping not found: {RUNTIME_JSON} or {SUPER_MAP_JSON}"
@@ -125,9 +113,8 @@ def _init():
 
     _load_super_mapping()
 
-    # (선택) 키워드 룩업
+    # 키워드 룩업
     if KW2SUPER_JSON.exists():
-        # {"스포츠": ["농구","축구"]} 형태라고 가정 → {"농구":"스포츠", ...}
         cat_kw = json.loads(KW2SUPER_JSON.read_text(encoding="utf-8"))
         _kw2super = {kw: cat for cat, kws in cat_kw.items() for kw in kws}
         logging.info(f"[categories] keyword map loaded ({len(_kw2super)} keys)")
@@ -139,9 +126,7 @@ def _init():
         f"[categories] init done: K={cents.shape[0]}, supers≈{max(_centroid_to_super)+1}"
     )
 
-# ─────────────────────────────────────────
-# 임베딩 & 예측 (super 이름으로 반환)
-# ─────────────────────────────────────────
+# 임베딩 & 예측
 def _embed_word(word: str) -> np.ndarray:
     with torch.no_grad():
         toks = _tokenizer(word, return_tensors="pt", add_special_tokens=True)
@@ -162,17 +147,13 @@ def _super_name_from_cid(cid: int) -> str:
     return _super_names.get(str(sid), f"super_{sid}")
 
 def _predict_super_from_word(word: str) -> str:
-    # 1) 키워드 룩업 우선 (있다면)
     if word in _kw2super:
         return _kw2super[word]
-    # 2) 임베딩 → KMeans → super
     emb = _embed_word(word)
     cid = int(_kmeans.predict([emb])[0])
     return _super_name_from_cid(cid)
 
-# ─────────────────────────────────────────
-# API (super 전용 스키마)
-# ─────────────────────────────────────────
+# API
 @categories_bp.route("/predict", methods=["POST"])
 def predict_route():
     """
@@ -193,7 +174,7 @@ def predict_route():
 
         _init()
 
-        # 형태소 추출: [(word, pos), ...]
+        # 형태소 추출
         morphs = extract_morphs(text)
 
         results = []
@@ -231,9 +212,7 @@ def predict_route():
         logging.exception("category/predict error")
         return jsonify({"error": str(e)}), 500
 
-# ─────────────────────────────────────────
 # 로컬 테스트
-# ─────────────────────────────────────────
 if __name__ == "__main__":
     _init()
     samples = [

@@ -1,6 +1,4 @@
 # AI/prompt_analyzer/persistence.py
-# -*- coding: utf-8 -*-
-
 from __future__ import annotations
 import numpy as np
 import torch
@@ -11,16 +9,13 @@ from collections import Counter
 from sklearn.cluster import KMeans
 from transformers import AutoTokenizer, AutoModel
 
-# 형태소 기반 토큰(어휘 집중도 R 계산용)
+# 형태소 기반 토큰
 try:
     from AI.prompt_analyzer.preprocessor import extract_morphs
 except Exception:
-    from prompt_analyzer.preprocessor import extract_morphs  # type: ignore
+    from prompt_analyzer.preprocessor import extract_morphs  
 
-
-# -----------------------------
 # 임베딩 헬퍼: 강력 방어 + 패딩 무시 평균 풀링
-# -----------------------------
 @torch.no_grad()
 def _embed_sentences(
     texts: List[str],
@@ -38,13 +33,12 @@ def _embed_sentences(
     """
     hidden_size = getattr(model.config, "hidden_size", None)
     if hidden_size is None:
-        # BertModel 계열이면 보통 존재하지만, 안전하게 처리
         hidden_size = model.embeddings.word_embeddings.embedding_dim
 
     if len(texts) == 0:
         return np.zeros((0, hidden_size), dtype=np.float32)
 
-    # 1) 인코딩 (여기선 use_fast 등 kwargs 금지)
+    # 1) 인코딩 
     enc = tokenizer(
         texts,
         return_tensors="pt",
@@ -55,15 +49,14 @@ def _embed_sentences(
         return_attention_mask=True,
     )
 
-    # 2) 항상 segment를 0으로 강제 (범위/타입 안전)
-    #    → enc에 있든 없든 덮어쓴다.
+    # 2) 항상 segment를 0으로 강제
     ttids = torch.zeros_like(enc["input_ids"], dtype=torch.long)
     enc["token_type_ids"] = ttids
 
     # 3) 디바이스 이동
     enc = {k: v.to(device) for k, v in enc.items()}
 
-    # 4) vocab 범위로 clamp (word_embeddings out-of-range 방지)
+    # 4) vocab 범위로 clamp 
     V = model.embeddings.word_embeddings.num_embeddings
     enc["input_ids"] = enc["input_ids"].clamp_(0, V - 1)
 
@@ -80,22 +73,19 @@ def _embed_sentences(
     try:
         sent_embs = _forward_and_pool(enc)
     except IndexError:
-        # 드물게 token_type_embeddings에서 범위 오류가 나면 세그먼트 자체 제거 후 재시도
         enc_no_seg = {k: v for k, v in enc.items() if k != "token_type_ids"}
         sent_embs = _forward_and_pool(enc_no_seg)
 
     return sent_embs.detach().cpu().numpy().astype(np.float32)
 
 
-# ------------------------------------
 # 핵심: Persistence (Simpson/Herfindahl)
-# ------------------------------------
 def compute_persistence(
     texts: List[str],
     centroids_path: str,
     model_name: str = "skt/kobert-base-v1",
     *,
-    # 가중치(0~1 스케일에서 가중합)
+    # 가중치
     weight_s: float = 1.0,
     weight_r: float = 1.0,
     weight_f: float = 1.0,
@@ -103,16 +93,10 @@ def compute_persistence(
     tau_s: float = 3.0,    # S: 문장 수 포화
     tau_r: float = 1.0,   # R: 토큰 수 소표본 패널티
     tau_f: float = 5.0,   # F: 문장 수 소표본 패널티
-    # 선택적 리소스 재사용(속도↑): {'tokenizer','model','device','centroids'}
     resources: Optional[Dict] = None,
 ) -> Tuple[float, float, float, float]:
-    """
-    반환: (score, S, R, F)  모두 0~100 스케일
-      - S: size (문장 수 포화)
-      - R: lexical concentration — Simpson index(∑p_i²) × 소표본 패널티
-      - F: cluster focus        — Simpson index(∑q_k²) × 소표본 패널티
-    """
-    # ── 모델/토크나이저/디바이스/센트로이드 ──────────────────────
+
+    # 모델/토크나이저/디바이스/센트로이드 
     if resources and {"tokenizer", "model", "device"} <= set(resources.keys()):
         tokenizer = resources["tokenizer"]
         model = resources["model"]
@@ -132,18 +116,18 @@ def compute_persistence(
 
     K_clusters = int(cents.shape[0])
 
-    # ── S: 문장 수 포화 (0~1) ───────────────────────────────────
+    # S: 문장 수 포화 (0~1) 
     N = len(texts)
     modifiers = 0
     for t in texts:
         morphs = extract_morphs(t)
         for w, pos in morphs:
-            if pos in ("VA", "MAG", "MM",  "Adjective", "Adverb", "Determiner"):  # 형용사, 부사, 관형사
+            if pos in ("VA", "MAG", "MM",  "Adjective", "Adverb", "Determiner"): 
                 modifiers += 1
     
     S = float(1.0 - np.exp(-float(modifiers) / tau_s))
 
-    # ── R: 어휘 집중도(심프슨) ─────────────────────────────────
+    #  R: 어휘 집중도
     flat_tokens: List[str] = []
     for t in texts:
         toks = [w for (w, _pos) in extract_morphs(t)]
@@ -152,14 +136,13 @@ def compute_persistence(
     T = len(flat_tokens)
     if T > 0:
         cnts = np.array(list(Counter(flat_tokens).values()), dtype=np.float64)
-        beta = 1.3  # 1.0(기존) <= beta; 1.1~1.5 권장
+        beta = 1.3  #
         w = cnts ** beta
         p = w / w.sum()
         simpson_R = np.sum(p * p)
         small_pen_r = 1.0 - np.exp(-float(T) / float(tau_r))
         R = (simpson_R * small_pen_r)
 
-        # 최소 0.2 보장
         R = max(R, 0.2)
 
         entropy = -np.sum(p * np.log(p+1e-12)) / np.log(len(p)+1e-12)
@@ -167,13 +150,13 @@ def compute_persistence(
     else:
         R = 0.0
 
-    # ── F: 클러스터 집중도(심프슨) ─────────────────────────────
-    embs = _embed_sentences(texts, tokenizer, model, device, max_length=128)  # (N,H)
+    # F: 클러스터 집중도(심프슨) ─
+    embs = _embed_sentences(texts, tokenizer, model, device, max_length=128)  
     if embs.shape[0] > 0:
         km = KMeans(n_init=1, random_state=42, n_clusters=K_clusters)
         km.cluster_centers_ = cents
         km._n_threads = 1
-        labels = km.predict(embs)  # (N,)
+        labels = km.predict(embs) 
 
         counts = np.zeros(K_clusters, dtype=np.float64)
         for k, v in Counter(labels).items():
@@ -187,7 +170,7 @@ def compute_persistence(
     else:
         F = 0.0
 
-    # ── 최종 점수 (가중합 → 0~100) ─────────────────────────────
+    #  최종 점수 (가중합 → 0~100) 
     wS, wR, wF = float(weight_s), float(weight_r), float(weight_f)
     denom = max(wS + wR + wF, 1e-12)
     score01 = (wS * S + wR * R + wF * F) / denom
@@ -196,9 +179,7 @@ def compute_persistence(
     return score01 * 100.0, S * 100.0, R * 100.0, F * 100.0
 
 
-# -----------------------------
-# 로컬 테스트 (python -m ... )
-# -----------------------------
+# 로컬 테스트 
 if __name__ == "__main__":
     import argparse
 
@@ -213,7 +194,6 @@ if __name__ == "__main__":
     ap.add_argument("--tau_f", type=float, default=20.0)
     args = ap.parse_args()
 
-    # 샘플
     texts = [
         "안개 낀 숲길을 홀로 걷는 사람",
         "강아지가 뛰노는 푸른 들판",
