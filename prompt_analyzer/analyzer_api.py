@@ -48,7 +48,7 @@ def _default_centroids_path() -> str:
     for p in _DEFAULT_CENTROIDS_CANDIDATES:
         if Path(p).exists():
             return str(p)
-    return "DPDT/data/centroids.json"
+    return "DPDT/models/kmeans_k100/centroids.npy"
 
 DEFAULT_CENTROIDS_PATH = _default_centroids_path()
 
@@ -170,7 +170,7 @@ CORS(app)
 def healthz():
     return jsonify({"status": "ok"}), 200
 
-@app.route("/analyze", methods=["POST"])
+@app.route("/analyze", methods=["POST"], strict_slashes=False)
 def analyze_route():
     try:
         data = request.get_json(force=True) or {}
@@ -188,7 +188,24 @@ def analyze_route():
     # 문자열이면 리스트로 변환
     if isinstance(texts, str):
         texts = [texts]
+    elif isinstance(texts, dict):
+        # promptContents가 [{"content":"..."}] 같은 구조일 경우 content 키 꺼내기
+        val = texts.get("content") or texts.get("text") or texts.get("value")
+        texts = [val] if val else []
+    elif isinstance(texts, (list, tuple)):
+        norm = []
+        for x in texts:
+            if isinstance(x, dict):
+                v = x.get("content") or x.get("text") or x.get("value")
+                if v:
+                    norm.append(str(v))
+            elif isinstance(x, str):
+                norm.append(x)
+        texts = norm
 
+    if not texts:
+        return jsonify({"error": "texts empty", "status": 400}), 400
+    
     model_name = data.get("model_name", "skt/kobert-base-v1")
     centroids_path = data.get("centroids_path", DEFAULT_CENTROIDS_PATH)
 
