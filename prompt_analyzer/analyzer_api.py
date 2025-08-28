@@ -1,3 +1,12 @@
+# -*- coding: utf-8 -*-
+"""
+분석 API (엔진 클래스 없이 단일 함수 + Flask 엔트리포인트)
+- POST /analyze  : { "texts": [...], "model_name"?, "centroids_path"? }
+- GET  /healthz  : 헬스체크
+- 기본 실행      : python -m AI.prompt_analyzer.analyzer_api   # Flask 서버 기동
+- 로컬 셀프테스트: python -m AI.prompt_analyzer.analyzer_api --selftest
+"""
+
 import os
 import json
 import datetime
@@ -16,6 +25,10 @@ except Exception:
     from prompt_analyzer.persistence import compute_persistence  # type: ignore
 
 from transformers import AutoTokenizer, AutoModel
+
+# Flask
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 
 # KoBERT: fast 미지원 → 일관 설정
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -77,7 +90,7 @@ def _ensure_resources(model_name: str, centroids_path: str) -> None:
 def _call_metric(func, texts, centroids_path: str, model_name: str) -> Tuple[float, float, float, float]:
     """
     compute_fluency / compute_persistence 호출 호환 래퍼
-    - 신버전: (score, S, K, C) 반환
+    - 신버전: (score, S, K/R, C/F) 반환
     - 구버전: score(float)만 반환
     - resources 인자를 지원하면 전달(속도↑), 아니면 일반 호출
     """
@@ -106,7 +119,7 @@ def _call_metric(func, texts, centroids_path: str, model_name: str) -> Tuple[flo
         return float(val), 0.0, 0.0, 0.0
 
 # ─────────────────────────────────────────────────────────────
-# 외부 공개 단일 API
+# 외부 공개 단일 API (함수)
 # ─────────────────────────────────────────────────────────────
 def analyze_from_api(
     texts,
@@ -131,7 +144,7 @@ def analyze_from_api(
         print("✅ compute_fluency 완료:", flu_score, flush=True)
 
         print("🧠 compute_persistence 시작", flush=True)
-        pers_score, pS, pK, pC = _call_metric(compute_persistence, texts, centroids_path, model_name)
+        pers_score, pS, pR, pF = _call_metric(compute_persistence, texts, centroids_path, model_name)
         print("✅ compute_persistence 완료:", pers_score, flush=True)
 
         creativity_score = (flu_score * 0.5 + pers_score * 0.5)
@@ -145,8 +158,16 @@ def analyze_from_api(
             "status": 200,
             "timestamp": datetime.datetime.now().isoformat(),
             "detail": {
-                "fluency_SKC": {"fluency_S": round(fS, 4), "fluency_K": round(fK, 4), "fluency_C": round(fC, 4)},
-                "persistence_SKC": {"persistence_S": round(pS, 4), "persistence_R": round(pK, 4), "persistence_F": round(pC, 4)},
+                "fluency_SKC": {
+                    "fluency_S": round(fS, 4),
+                    "fluency_K": round(fK, 4),
+                    "fluency_C": round(fC, 4),
+                },
+                "persistence_SKC": {
+                    "persistence_S": round(pS, 4),
+                    "persistence_R": round(pR, 4),
+                    "persistence_F": round(pF, 4),
+                },
             },
         }
 
@@ -159,20 +180,59 @@ def analyze_from_api(
         }
 
 # ─────────────────────────────────────────────────────────────
-# 로컬 셀프 테스트
+# Flask 앱 (엔드포인트)
+# ─────────────────────────────────────────────────────────────
+app = Flask(__name__)
+CORS(app)
+
+@app.route("/healthz", methods=["GET"])
+def healthz():
+    return jsonify({"status": "ok"}), 200
+
+@app.route("/analyze", methods=["POST"])
+def analyze_route():
+    try:
+        data = request.get_json(force=True) or {}
+    except Exception:
+        return jsonify({"error": "invalid JSON"}), 400
+
+    texts = data.get("texts", [])
+    model_name = data.get("model_name", "skt/kobert-base-v1")
+    centroids_path = data.get("centroids_path", DEFAULT_CENTROIDS_PATH)
+
+    result = analyze_from_api(texts, centroids_path=centroids_path, model_name=model_name)
+    code = result.get("status", 200)
+    return jsonify(result), int(code)
+
+# ─────────────────────────────────────────────────────────────
+# 메인: 기본은 서버 실행, --selftest 시 샘플 출력 후 종료
 # ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    samples = [
-        "안개 낀 숲길을 홀로 걷는 사람",
-        "강아지가 뛰노는 푸른 들판",
-        "도시의 밤거리를 달리는 자동차",
-        "아이들이 공원에서 뛰어노는 장면",
-        "바닷가에서 서핑을 즐기는 청년",
-        "책상 위에 펼쳐진 고서와 만년필",
-        "하늘 높이 떠 있는 열기구",
-        "밤하늘을 수놓는 불꽃놀이",
-        "유리창 너머로 비가 내리는 풍경",
-        "산 정상에서 일출을 바라보는 등산객",
-    ]
-    out = analyze_from_api(samples, centroids_path=DEFAULT_CENTROIDS_PATH, model_name="skt/kobert-base-v1")
-    print(json.dumps(out, ensure_ascii=False, indent=2))
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--host", default="0.0.0.0")
+    ap.add_argument("--port", type=int, default=5000)
+    ap.add_argument("--debug", action="store_true", default=True)
+    ap.add_argument("--selftest", action="store_true", help="샘플 문장으로 로컬 분석만 수행하고 종료")
+    ap.add_argument("--centroids", default=DEFAULT_CENTROIDS_PATH, help="override centroids path")
+    ap.add_argument("--model", default="skt/kobert-base-v1")
+    args = ap.parse_args()
+
+    if args.selftest:
+        samples = [
+            "안개 낀 숲길을 홀로 걷는 사람",
+            "강아지가 뛰노는 푸른 들판",
+            "도시의 밤거리를 달리는 자동차",
+            "아이들이 공원에서 뛰어노는 장면",
+            "바닷가에서 서핑을 즐기는 청년",
+            "책상 위에 펼쳐진 고서와 만년필",
+            "하늘 높이 떠 있는 열기구",
+            "밤하늘을 수놓는 불꽃놀이",
+            "유리창 너머로 비가 내리는 풍경",
+            "산 정상에서 일출을 바라보는 등산객",
+        ]
+        out = analyze_from_api(samples, centroids_path=args.centroids, model_name=args.model)
+        print(json.dumps(out, ensure_ascii=False, indent=2))
+    else:
+        app.run(host=args.host, port=args.port, debug=args.debug)
