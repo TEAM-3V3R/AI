@@ -199,4 +199,4 @@ if __name__ == "__main__":
     app = Flask(__name__)
     app.register_blueprint(sam_bp)
 
-    app.run(host="0.0.0.0", port=5001)
+    app.run(host="0.0.0.0", port=5002)
