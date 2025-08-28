@@ -177,13 +177,30 @@ def analyze_route():
     except Exception:
         return jsonify({"error": "invalid JSON"}), 400
 
-    texts = data.get("texts", [])
+    # 1) chatId 추출 (필요하면 응답에도 그대로 포함 가능)
+    chat_id = data.get("chatId") or data.get("chat_id")
+
+    # 2) promptContents → texts 로 변환
+    texts = data.get("texts")
+    if texts is None:
+        texts = data.get("promptContents", [])
+
+    # 문자열이면 리스트로 변환
+    if isinstance(texts, str):
+        texts = [texts]
+
     model_name = data.get("model_name", "skt/kobert-base-v1")
     centroids_path = data.get("centroids_path", DEFAULT_CENTROIDS_PATH)
 
     result = analyze_from_api(texts, centroids_path=centroids_path, model_name=model_name)
+
+    # 응답에 chatId 포함시키기 (필요시)
+    if chat_id is not None:
+        result["chatId"] = chat_id
+
     code = result.get("status", 200)
     return jsonify(result), int(code)
+
 
 # 메인: 기본은 서버 실행, --selftest 시 샘플 출력 후 종료
 if __name__ == "__main__":
