@@ -1,12 +1,8 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
 Flask
 konlpy
 sentence-transformers
 numpy<2
 gunicorn
-opencv-python-headless
-
-torch
-torchvision
-matplotlib
-
 flask-cors
+torch==2.3.1+cpu
