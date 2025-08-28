@@ -208,7 +208,7 @@ if __name__ == "__main__":
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="0.0.0.0")
-    ap.add_argument("--port", type=int, default=5000)
+    ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", "5000")))
     ap.add_argument("--debug", action="store_true", default=True)
     ap.add_argument("--selftest", action="store_true", help="샘플 문장으로 로컬 분석만 수행하고 종료")
     ap.add_argument("--centroids", default=DEFAULT_CENTROIDS_PATH, help="override centroids path")
