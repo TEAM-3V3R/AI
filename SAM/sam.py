@@ -19,7 +19,7 @@ sam_bp = Blueprint('sam', __name__)
 #checkpoint_path = "sam_vit_h_4b8939.pth"
 #model_type = "vit_h"
 model_type = "vit_b"
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 sam = None
 
 def download_sam_checkpoint():
@@ -42,11 +42,10 @@ def download_sam_checkpoint():
 
 def initialize_sam():
     global sam
-    if sam is None:
-        print("\n사용 장치:", device)
-        if device.type == 'cuda':
-            print(f"GPU 모델: {torch.cuda.get_device_name(0)}")
-        
+    device = torch.device("cuda:0")
+    print(f"GPU 모델: {torch.cuda.get_device_name(0)}")
+
+    if sam is None:    
         #checkpoint_path = download_sam_checkpoint()
         checkpoint_path = "/app/models/sam_vit_b_01ec64.pth"
         if not os.path.exists(checkpoint_path):
@@ -193,3 +192,11 @@ def handle_sam():
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+    
+if __name__ == "__main__":
+    from flask import Flask
+    app = Flask(__name__)
+    app.register_blueprint(sam_bp)
+
+    app.run(host="0.0.0.0", port=5001)
