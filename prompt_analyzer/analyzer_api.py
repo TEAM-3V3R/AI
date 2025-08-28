@@ -158,15 +158,15 @@ def analyze_from_api(
             "status": 200,
             "timestamp": datetime.datetime.now().isoformat(),
             "detail": {
-                "fluency_SKC": {
-                    "fluency_S": round(fS, 4),
-                    "fluency_K": round(fK, 4),
-                    "fluency_C": round(fC, 4),
+                "fluency_skc": {
+                    "fluency_s": round(fS, 4),
+                    "fluency_k": round(fK, 4),
+                    "fluency_c": round(fC, 4),
                 },
-                "persistence_SKC": {
-                    "persistence_S": round(pS, 4),
-                    "persistence_R": round(pR, 4),
-                    "persistence_F": round(pF, 4),
+                "persistence_srf": {
+                    "persistence_s": round(pS, 4),
+                    "persistence_r": round(pR, 4),
+                    "persistence_f": round(pF, 4),
                 },
             },
         }

@@ -141,7 +141,7 @@ def compute_persistence(
             if pos in ("VA", "MAG", "MM",  "Adjective", "Adverb", "Determiner"):  # 형용사, 부사, 관형사
                 modifiers += 1
     
-    S = 1.0 - np.exp(-float(modifiers) / tau_s)
+    S = float(1.0 - np.exp(-float(modifiers) / tau_s))
 
     # ── R: 어휘 집중도(심프슨) ─────────────────────────────────
     flat_tokens: List[str] = []
@@ -163,7 +163,7 @@ def compute_persistence(
         R = max(R, 0.2)
 
         entropy = -np.sum(p * np.log(p+1e-12)) / np.log(len(p)+1e-12)
-        R = 0.5 * simpson_R + 0.5 * entropy
+        R = float(0.5 * simpson_R + 0.5 * entropy)
     else:
         R = 0.0
 

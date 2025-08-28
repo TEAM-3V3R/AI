@@ -57,8 +57,8 @@ def compute_fluency(
 
     # S: 문장수 포화
     tau_s = 8.0
-    S = 1.0 - np.exp(-float(N) / tau_s)
-
+    S = float(1.0 - np.exp(-float(N) / tau_s))
+    
     # K: 어휘 다양성(엔트로피 정규화 + 소표본 패널티)
     if T > 0 and U > 1:
         from collections import Counter

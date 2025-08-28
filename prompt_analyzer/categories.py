@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 # AI/prompt_analyzer/categories.py
+
 import os
 import json
 import logging
 from pathlib import Path
-from collections import Counter
 
 import numpy as np
 import torch
@@ -12,7 +12,11 @@ from flask import Blueprint, request, jsonify
 from sklearn.cluster import KMeans
 from transformers import AutoTokenizer, AutoModel
 
-from AI.prompt_analyzer.preprocessor import extract_morphs
+# 상대/절대 import 상황 모두 대응 (개발 편의용)
+try:
+    from .preprocessor import extract_morphs
+except ImportError:
+    from AI.prompt_analyzer.preprocessor import extract_morphs
 
 # ─────────────────────────────────────────
 # 환경/로그
@@ -26,70 +30,65 @@ logging.getLogger().setLevel(logging.INFO)
 categories_bp = Blueprint("category", __name__, url_prefix="/category")
 
 # ─────────────────────────────────────────
-# 경로 설정
+# 경로 (super 전용)
 # ─────────────────────────────────────────
-AI_DIR = Path(__file__).resolve().parents[1]        # .../AI
-DPDT_DIR = AI_DIR / "DPDT"
-DATA_DIR = DPDT_DIR / "data"
+AI_DIR     = Path(__file__).resolve().parents[1]          # .../AI
+DPDT_DIR   = AI_DIR / "DPDT"
+DATA_DIR   = DPDT_DIR / "data"
 MODELS_DIR = DPDT_DIR / "models"
 
-CENTROIDS_DEFAULT = MODELS_DIR / "kmeans_k100" / "centroids.npy"
-RUNTIME_JSON      = DATA_DIR / "runtime_categories.json"  # 권장
-SUPER_MAP_JSON    = DATA_DIR / "super_map.json"           # 폴백
-SUPER_NAMES_JSON  = DATA_DIR / "super_names.json"         # 폴백
+CENTROIDS_PATH  = MODELS_DIR / "kmeans_k100" / "centroids.npy"
+RUNTIME_JSON    = DATA_DIR / "runtime_categories.json"    # 권장(우선)
+SUPER_MAP_JSON  = DATA_DIR / "super_map.json"             # 폴백
+SUPER_NAMES_JSON= DATA_DIR / "super_names.json"           # 폴백
 
 # ─────────────────────────────────────────
-# 전역 캐시
+# 전역 리소스
 # ─────────────────────────────────────────
+_model_name = "klue/bert-base"
 _tokenizer = None
 _model = None
 _device = None
 _kmeans = None
-_centroid_to_super = None   # list[int] 길이=K  (또는 dict[str->int]를 list로 정규화)
-_super_names = None         # dict[str->name]
 
-# 품사 허용( MeCab + Okt 동시 지원 )
-POS_ALLOWED = {
-    # MeCab
-    "NNG", "NNP", "NP", "VA",
-    # Okt
-    "Noun", "Adjective",
-}
+_centroid_to_super = None     # list[int], len=K
+_super_names = None           # dict[str(sid)] -> name
+
+# 품사 허용( MeCab + Okt )
+POS_ALLOWED = {"NNG", "NNP", "NP", "VA", "Noun", "Adjective"}
+
+# (선택) 키워드 → super 이름 매핑파일이 있다면 사용 (없어도 동작)
+KW2SUPER_JSON = DATA_DIR / "category_keywords.json"
+_kw2super = {}
 
 # ─────────────────────────────────────────
 # 리소스 로드
 # ─────────────────────────────────────────
-def _load_mapping():
-    """runtime_categories.json이 있으면 우선 사용.
-       없으면 super_map.json(+super_names.json) 조합으로 폴백."""
+def _load_super_mapping():
+    """runtime_categories.json 우선, 없으면 super_map.json(+super_names.json)"""
     global _centroid_to_super, _super_names
 
     if RUNTIME_JSON.exists():
         cfg = json.loads(RUNTIME_JSON.read_text(encoding="utf-8"))
         c2s = cfg.get("centroid_to_super")
         if isinstance(c2s, dict):
-            # dict -> list 정규화
             K = len(c2s)
             _centroid_to_super = [int(c2s[str(i)]) for i in range(K)]
         else:
             _centroid_to_super = [int(x) for x in c2s]
-        # names(optional)
-        names = cfg.get("super_names")
-        if names and isinstance(names, dict):
-            _super_names = {str(k): v for k, v in names.items()}
-        else:
-            n_super = max(_centroid_to_super) + 1
-            _super_names = {str(i): f"super_{i}" for i in range(n_super)}
+        names = cfg.get("super_names") or {}
+        _super_names = {str(k): v for k, v in names.items()}
         logging.info("[categories] mapping: runtime_categories.json loaded")
         return
 
-    # 폴백: super_map.json + super_names.json
+    # 폴백
     if not SUPER_MAP_JSON.exists():
-        raise FileNotFoundError(f"mapping not found: {RUNTIME_JSON} or {SUPER_MAP_JSON}")
+        raise FileNotFoundError(
+            f"super mapping not found: {RUNTIME_JSON} or {SUPER_MAP_JSON}"
+        )
 
     raw = json.loads(SUPER_MAP_JSON.read_text(encoding="utf-8"))
     if isinstance(raw, dict):
-        # {"0": 4, "1": 6, ...} → list로 정규화
         K = len(raw)
         _centroid_to_super = [int(raw[str(i)]) for i in range(K)]
     elif isinstance(raw, list):
@@ -106,116 +105,131 @@ def _load_mapping():
 
     logging.info("[categories] mapping: super_map.json(+names) loaded")
 
-
 def _init():
-    """모델/센트로이드/매핑 리소스 1회 초기화"""
-    global _tokenizer, _model, _device, _kmeans
-
+    global _tokenizer, _model, _device, _kmeans, _kw2super
     if _tokenizer is not None:
         return
 
-    model_name = "skt/kobert-base-v1"
-    logging.info(f"[categories] loading model: {model_name}")
-    # KoBERT는 SentencePiece 기반 → fast=False
-    _tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=False)
-    _model = AutoModel.from_pretrained(model_name).eval()
+    logging.info(f"[categories] loading model: '{_model_name}'")
+    _tokenizer = AutoTokenizer.from_pretrained(_model_name, use_fast=True)
+    _model = AutoModel.from_pretrained(_model_name).eval()
     _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     _model.to(_device)
 
-    # 센트로이드
-    if not CENTROIDS_DEFAULT.exists():
-        raise FileNotFoundError(f"centroids not found: {CENTROIDS_DEFAULT}")
-    cents = np.load(CENTROIDS_DEFAULT).astype(np.float64)
+    if not CENTROIDS_PATH.exists():
+        raise FileNotFoundError(f"centroids not found: {CENTROIDS_PATH}")
+    cents = np.load(CENTROIDS_PATH).astype(np.float64)
     _kmeans = KMeans(n_clusters=cents.shape[0], n_init=1, random_state=42)
     _kmeans.cluster_centers_ = cents
     _kmeans._n_threads = 1
 
-    # 매핑
-    _load_mapping()
+    _load_super_mapping()
+
+    # (선택) 키워드 룩업
+    if KW2SUPER_JSON.exists():
+        # {"스포츠": ["농구","축구"]} 형태라고 가정 → {"농구":"스포츠", ...}
+        cat_kw = json.loads(KW2SUPER_JSON.read_text(encoding="utf-8"))
+        _kw2super = {kw: cat for cat, kws in cat_kw.items() for kw in kws}
+        logging.info(f"[categories] keyword map loaded ({len(_kw2super)} keys)")
+    else:
+        _kw2super = {}
+        logging.info("[categories] keyword map not found (optional)")
 
     logging.info(
-        f"[categories] init done: K={len(cents)} supers≈{max(_centroid_to_super)+1}"
+        f"[categories] init done: K={cents.shape[0]}, supers≈{max(_centroid_to_super)+1}"
     )
 
 # ─────────────────────────────────────────
-# 핵심: 분류
+# 임베딩 & 예측 (super 이름으로 반환)
 # ─────────────────────────────────────────
 def _embed_word(word: str) -> np.ndarray:
-    """
-    KoBERT용 안전 임베딩:
-    - token_type_ids 제거(모델이 내부 0 세팅) → index 오류 회피
-    - attention_mask 기반 mean pooling → subword 분할에도 안정
-    """
     with torch.no_grad():
         toks = _tokenizer(word, return_tensors="pt", add_special_tokens=True)
-        # token_type_ids가 모델 type_vocab_size와 충돌하는 사례 방지
         toks.pop("token_type_ids", None)
         toks = {k: v.to(_device) for k, v in toks.items()}
-
         out = _model(**toks).last_hidden_state  # (1, L, H)
 
-        # attention_mask로 가중 평균(패딩 무시)
         if "attention_mask" in toks:
-            mask = toks["attention_mask"].unsqueeze(-1).type_as(out)  # (1, L, 1)
+            mask = toks["attention_mask"].unsqueeze(-1).type_as(out)
         else:
             mask = torch.ones(out.shape[:2], device=out.device).unsqueeze(-1)
 
         emb = (out * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1e-9)  # (1, H)
-        emb = emb[0].detach().cpu().numpy().astype(np.float64)  # (H,)
-        return emb
+        return emb[0].detach().cpu().numpy().astype(np.float64)
 
+def _super_name_from_cid(cid: int) -> str:
+    sid = _centroid_to_super[cid]
+    return _super_names.get(str(sid), f"super_{sid}")
 
-def _predict_super_from_word(word: str):
+def _predict_super_from_word(word: str) -> str:
+    # 1) 키워드 룩업 우선 (있다면)
+    if word in _kw2super:
+        return _kw2super[word]
+    # 2) 임베딩 → KMeans → super
     emb = _embed_word(word)
     cid = int(_kmeans.predict([emb])[0])
-    sid = _centroid_to_super[cid]
-    sname = _super_names.get(str(sid), f"super_{sid}")
-    return cid, sid, sname
-
-def predict_category(text: str):
-    """문장 → 형태소(명사/형용사) → 단어 임베딩 → KMeans → 슈퍼카테고리 다수결"""
-    _init()
-
-    morphs = extract_morphs(text)  # [(word,pos), ...]
-    picks = []
-    for w, pos in morphs:
-        if pos not in POS_ALLOWED:
-            continue
-        try:
-            cid, sid, sname = _predict_super_from_word(w)
-            picks.append({"word": w, "centroid": cid, "super": sid, "super_name": sname})
-        except Exception:
-            continue
-
-    # 형태소 단계에서 아무 것도 못 얻었을 때: 공백 토큰 폴백 시도
-    if not picks:
-        for w in text.split():
-            try:
-                cid, sid, sname = _predict_super_from_word(w)
-                picks.append({"word": w, "centroid": cid, "super": sid, "super_name": sname})
-            except Exception:
-                continue
-
-    if not picks:
-        return "알수없음", []
-
-    counts = Counter(p["super"] for p in picks)
-    sid = counts.most_common(1)[0][0]
-    sname = _super_names.get(str(sid), f"super_{sid}")
-    return sname, picks
+    return _super_name_from_cid(cid)
 
 # ─────────────────────────────────────────
-# Flask 라우트
+# API (super 전용 스키마)
 # ─────────────────────────────────────────
 @categories_bp.route("/predict", methods=["POST"])
 def predict_route():
-    data = request.get_json() or {}
-    text = data.get("promptContent", "").strip()
-    if not text:
-        return jsonify({"error": "promptContent is required"}), 400
+    """
+    입력:
+      { "promptId": "...", "promptContent": "텍스트" }
+    출력:
+      { "promptId": "...", "results": [ { "text": "단어", "classification": "<super_name>" }, ... ] }
+    """
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+        prompt_id = data.get("promptId")
+        text = (data.get("promptContent") or "").strip()
 
-    label, details = predict_category(text)
-    return jsonify({"label": label, "details": details}), 200
+        if not prompt_id:
+            return jsonify({"error": "promptId is required"}), 400
+        if not text:
+            return jsonify({"error": "promptContent is required"}), 400
+
+        _init()
+
+        # 형태소 추출: [(word, pos), ...]
+        morphs = extract_morphs(text)
+
+        results = []
+        seen_words = set()
+
+        # 명사/형용사만 카테고리 예측
+        for w, pos in morphs:
+            if pos not in POS_ALLOWED:
+                continue
+            if w in seen_words:
+                continue
+            try:
+                sname = _predict_super_from_word(w)
+                results.append({"text": w, "classification": sname})
+                seen_words.add(w)
+            except Exception:
+                continue
+
+        # 형태소에서 하나도 못 잡았을 때: 공백 단위 폴백
+        if not results:
+            for w in text.split():
+                w = w.strip()
+                if not w or w in seen_words:
+                    continue
+                try:
+                    sname = _predict_super_from_word(w)
+                    results.append({"text": w, "classification": sname})
+                    seen_words.add(w)
+                except Exception:
+                    continue
+
+        return jsonify({"promptId": prompt_id, "results": results}), 200
+
+    except Exception as e:
+        logging.exception("category/predict error")
+        return jsonify({"error": str(e)}), 500
 
 # ─────────────────────────────────────────
 # 로컬 테스트
@@ -229,5 +243,11 @@ if __name__ == "__main__":
         "바닷가에서 서핑보드를 타는 소년",
     ]
     for s in samples:
-        cat, info = predict_category(s)
-        print(f"{s} → {cat} | {info[:3]}")
+        outs = []
+        for w, pos in extract_morphs(s):
+            if pos in POS_ALLOWED:
+                try:
+                    outs.append((w, _predict_super_from_word(w)))
+                except Exception:
+                    pass
+        print(f"[{s}] → {outs[:6]}")
