@@ -15,13 +15,8 @@ from typing import Any, Dict, Tuple
 import numpy as np
 import torch
 
-# --- import ---
-try:
-    from AI.prompt_analyzer.fluency import compute_fluency
-    from AI.prompt_analyzer.persistence import compute_persistence
-except Exception:
-    from prompt_analyzer.fluency import compute_fluency  # type: ignore
-    from prompt_analyzer.persistence import compute_persistence  # type: ignore
+from prompt_analyzer.fluency import compute_fluency  
+from prompt_analyzer.persistence import compute_persistence  
 
 from transformers import AutoTokenizer, AutoModel
 

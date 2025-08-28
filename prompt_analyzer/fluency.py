@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from sklearn.cluster import KMeans
 from transformers import AutoTokenizer, AutoModel
-from AI.prompt_analyzer.preprocessor import extract_morphs
+from prompt_analyzer.preprocessor import extract_morphs
 
 def compute_fluency(
     texts: list[str],
