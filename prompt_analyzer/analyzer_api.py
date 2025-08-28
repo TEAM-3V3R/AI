@@ -172,13 +172,30 @@ def analyze_route():
     except Exception:
         return jsonify({"error": "invalid JSON"}), 400
 
-    texts = data.get("texts", [])
+    # 1) chatId 추출 (필요하면 응답에도 그대로 포함 가능)
+    chat_id = data.get("chatId") or data.get("chat_id")
+
+    # 2) promptContents → texts 로 변환
+    texts = data.get("texts")
+    if texts is None:
+        texts = data.get("promptContents", [])
+
+    # 문자열이면 리스트로 변환
+    if isinstance(texts, str):
+        texts = [texts]
+
     model_name = data.get("model_name", "skt/kobert-base-v1")
     centroids_path = data.get("centroids_path", DEFAULT_CENTROIDS_PATH)
 
     result = analyze_from_api(texts, centroids_path=centroids_path, model_name=model_name)
+
+    # 응답에 chatId 포함시키기 (필요시)
+    if chat_id is not None:
+        result["chatId"] = chat_id
+
     code = result.get("status", 200)
     return jsonify(result), int(code)
+
 
 # 메인: 기본은 서버 실행, --selftest 시 샘플 출력 후 종료
 if __name__ == "__main__":
@@ -186,7 +203,7 @@ if __name__ == "__main__":
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="0.0.0.0")
-    ap.add_argument("--port", type=int, default=5000)
+    ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", "5000")))
     ap.add_argument("--debug", action="store_true", default=True)
     ap.add_argument("--selftest", action="store_true", help="샘플 문장으로 로컬 분석만 수행하고 종료")
     ap.add_argument("--centroids", default=DEFAULT_CENTROIDS_PATH, help="override centroids path")
