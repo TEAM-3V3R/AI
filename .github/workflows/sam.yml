@@ -19,7 +19,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./SAM
-          file: SAM/Dockerfile.gpu
+          file: SAM/Dockerfile
           push: true
           tags: ${{ secrets.DOCKER_IMAGE }}:sam-latest
 
