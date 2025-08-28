@@ -5,7 +5,8 @@ on:
   push:
     branches: [main]
     paths-ignore:   
-      - 'SAM/**'      
+      - 'SAM/**'
+      - '.github/workflows/sam.yml'
 
 permissions:
   contents: read
