@@ -9,11 +9,7 @@ from collections import Counter
 from sklearn.cluster import KMeans
 from transformers import AutoTokenizer, AutoModel
 
-# 형태소 기반 토큰
-try:
-    from AI.prompt_analyzer.preprocessor import extract_morphs
-except Exception:
-    from prompt_analyzer.preprocessor import extract_morphs  
+from prompt_analyzer.preprocessor import extract_morphs
 
 # 임베딩 헬퍼: 강력 방어 + 패딩 무시 평균 풀링
 @torch.no_grad()
