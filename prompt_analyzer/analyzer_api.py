@@ -172,24 +172,43 @@ def healthz():
 
 @app.route("/analyze", methods=["POST"], strict_slashes=False)
 def analyze_route():
+    # 0) 원문 확보 (디버깅용)
+    raw = request.get_data(cache=False, as_text=True)
+
+    # 1) JSON 먼저 시도 (조용히)
+    data = None
     try:
-        data = request.get_json(force=True) or {}
+        data = json.loads(raw) if raw else request.get_json(silent=True)
     except Exception:
-        return jsonify({"error": "invalid JSON"}), 400
+        data = None
 
-    # 1) chatId 추출 (필요하면 응답에도 그대로 포함 가능)
-    chat_id = data.get("chatId") or data.get("chat_id")
+    chat_id = None
+    texts = []
 
-    # 2) promptContents → texts 로 변환
-    texts = data.get("promptContents", [])
+    if isinstance(data, dict):
+        chat_id = data.get("chatId") or data.get("chat_id") or data.get("chatid")
+        texts = data.get("promptContents")
+        if texts is None:
+            texts = data.get("texts", [])
 
-    # 문자열이면 리스트로 변환
+
+    # 2) JSON이 아니거나 비어있으면 폼으로 시도
+    if not texts:
+        lst = request.form.getlist("promptContents")
+        if not lst:
+            lst = request.form.getlist("texts")
+        if not lst:
+            single = request.form.get("promptContent") or request.form.get("text")
+            if single:
+                lst = [single]
+        texts = lst
+        if chat_id is None:
+            cid = request.form.get("chatId") or request.form.get("chat_id") or request.form.get("chatid")
+            chat_id = cid
+
+    # 정규화
     if isinstance(texts, str):
         texts = [texts]
-    elif isinstance(texts, dict):
-        # promptContents가 [{"content":"..."}] 같은 구조일 경우 content 키 꺼내기
-        val = texts.get("content") or texts.get("text") or texts.get("value")
-        texts = [val] if val else []
     elif isinstance(texts, (list, tuple)):
         norm = []
         for x in texts:
@@ -199,19 +218,38 @@ def analyze_route():
                     norm.append(str(v))
             elif isinstance(x, str):
                 norm.append(x)
-        texts = norm
+        texts = norm or []
+    else:
+        texts = []
+
+    # 숫자화(선택)
+    try:
+        chat_id = int(chat_id) if chat_id is not None else None
+    except Exception:
+        pass
 
     if not texts:
-        return jsonify({"error": "texts empty", "status": 400}), 400
-    
-    model_name = data.get("model_name", "skt/kobert-base-v1")
-    centroids_path = data.get("centroids_path", DEFAULT_CENTROIDS_PATH)
+        return jsonify({
+            "error": "Missing prompts",
+            "status": 400,
+            "hint": "Send JSON with either {chatId, promptContents:[...]} or {texts:[...]}. "
+                    "Form-data also supported (repeat promptContents).",
+            "preview": (raw[:200] if raw else "")
+        }), 400
+
+    # 어떤 키가 수용됐는지 기록
+    used_key = "promptContents" if data and data.get("promptContents") is not None else \
+               ("texts" if data and data.get("texts") is not None else
+                ("form:promptContents" if request.form.getlist("promptContents") else
+                 ("form:texts" if request.form.getlist("texts") else None)))
+
+    model_name = (data or {}).get("model_name", "skt/kobert-base-v1") if data else "skt/kobert-base-v1"
+    centroids_path = (data or {}).get("centroids_path", DEFAULT_CENTROIDS_PATH) if data else DEFAULT_CENTROIDS_PATH
 
     result = analyze_from_api(texts, centroids_path=centroids_path, model_name=model_name)
-
-    # 응답에 chatId 포함시키기 (필요시)
     if chat_id is not None:
         result["chatId"] = chat_id
+    result["accepted_key"] = used_key or "normalized"
 
     code = result.get("status", 200)
     return jsonify(result), int(code)
