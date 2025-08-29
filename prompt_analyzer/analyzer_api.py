@@ -176,9 +176,7 @@ def analyze_route():
     chat_id = data.get("chatId") or data.get("chat_id")
 
     # 2) promptContents → texts 로 변환
-    texts = data.get("texts")
-    if texts is None:
-        texts = data.get("promptContents", [])
+    texts = data.get("promptContents", [])
 
     # 문자열이면 리스트로 변환
     if isinstance(texts, str):
