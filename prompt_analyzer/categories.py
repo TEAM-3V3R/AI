@@ -7,7 +7,8 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from flask import Blueprint, request, jsonify
+import json
+from flask import Blueprint, request, jsonify, current_app
 from sklearn.cluster import KMeans
 from transformers import AutoTokenizer, AutoModel
 
@@ -208,10 +209,17 @@ def predict_route():
                 except Exception:
                     continue
 
-        return jsonify({
-            "promptId": prompt_id,
-            "results": results
-        }), 200
+        arr = [
+            {"text": item["text"], "classification": item["classification"]}
+            for item in results
+        ]
+        resp = current_app.response_class(
+            response=json.dumps(arr, ensure_ascii=False),
+            mimetype="application/json",
+        )
+        if prompt_id:
+            resp.headers["X-Prompt-Id"] = str(prompt_id)
+        return resp, 200
 
     except Exception as e:
         logging.exception("category/predict error")
