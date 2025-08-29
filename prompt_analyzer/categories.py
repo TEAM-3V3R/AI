@@ -208,13 +208,18 @@ def predict_route():
                     seen_words.add(w)
                 except Exception:
                     continue
+            
+        wrap = request.args.get("wrap") in ("1", "true", "yes")
 
         arr = [
             {"text": item["text"], "classification": item["classification"]}
             for item in results
         ]
+
+        payload = {"results": arr} if wrap else arr  # ← results 키로 래핑 지원
+
         resp = current_app.response_class(
-            response=json.dumps(arr, ensure_ascii=False),
+            response=json.dumps(payload, ensure_ascii=False),
             mimetype="application/json",
         )
         if prompt_id:
