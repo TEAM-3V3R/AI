@@ -1,6 +1,6 @@
 """
 분석 API
-- POST /analyze  : { "texts": [...], "model_name"?, "centroids_path"? }
+- POST /analyze : {"chatId": <int?>, "promptContents": [<str>, ...], "model_name"?, "centroids_path"?}
 - GET  /healthz  : 헬스체크
 - 기본 실행      : python -m AI.prompt_analyzer.analyzer_api 
 - 로컬 셀프테스트: python -m AI.prompt_analyzer.analyzer_api --selftest
@@ -10,10 +10,13 @@ import os
 import json
 import datetime
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, List
 
 import numpy as np
 import torch
+from transformers import AutoTokenizer, AutoModel
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 
 # --- import ---
 try:
@@ -22,12 +25,6 @@ try:
 except Exception:
     from prompt_analyzer.fluency import compute_fluency  # type: ignore
     from prompt_analyzer.persistence import compute_persistence  # type: ignore
-
-from transformers import AutoTokenizer, AutoModel
-
-# Flask
-from flask import Flask, request, jsonify
-from flask_cors import CORS
 
 # KoBERT
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
@@ -62,23 +59,29 @@ def _ensure_resources(model_name: str, centroids_path: str) -> None:
     global _TOKENIZER, _MODEL, _DEVICE, _CENTROIDS, _CENTROIDS_TAG
 
     if _TOKENIZER is None or _MODEL is None:
+        print(f"[RES] loading model='{model_name}'", flush=True)
         _TOKENIZER = AutoTokenizer.from_pretrained(model_name, use_fast=False)
         _MODEL = AutoModel.from_pretrained(model_name).eval()
         _DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         _MODEL.to(_DEVICE)
+        print(f"[RES] device={_DEVICE}", flush=True)
 
     cp = Path(centroids_path)
-    tag = (cp.resolve().as_posix() if cp.exists() else str(cp))
+    if not cp.exists():
+        cands = "\n  - " + "\n  - ".join(str(p) for p in _DEFAULT_CENTROIDS_CANDIDATES)
+        raise FileNotFoundError(f"centroids not found: {cp}\nTried candidates:{cands}")
+    
+    tag = cp.resolve().as_posix()
     if (_CENTROIDS is None) or (_CENTROIDS_TAG != tag):
-        if not cp.exists():
-            raise FileNotFoundError(f"centroids not found: {cp}")
+        print(f"[RES] loading centroids='{tag}'", flush=True)
         arr = np.load(cp)
         if arr.dtype != np.float32:
             arr = arr.astype(np.float32, copy=False)
         _CENTROIDS = arr
         _CENTROIDS_TAG = tag
+        print(f"[RES] centroids shape={_CENTROIDS.shape}, dtype={_CENTROIDS.dtype}", flush=True)
 
-def _call_metric(func, texts, centroids_path: str, model_name: str) -> Tuple[float, float, float, float]:
+def _call_metric(func, texts: List[str], centroids_path: str, model_name: str) -> Tuple[float, float, float, float]:
     try:
         val = func(
             texts,
@@ -97,19 +100,17 @@ def _call_metric(func, texts, centroids_path: str, model_name: str) -> Tuple[flo
     if isinstance(val, tuple) and len(val) >= 4:
         score, S, K, C = val[:4]
         return float(score), float(S), float(K), float(C)
-    else:
-        return float(val), 0.0, 0.0, 0.0
+    return float(val), 0.0, 0.0, 0.0
 
-# 외부 공개 단일 API 
 def analyze_from_api(
-    texts,
+    texts: List[str],
     centroids_path: str = DEFAULT_CENTROIDS_PATH,
-    model_name: str = "skt/kobert-base-v1",
+    model_name: str = "skt/kobert-base-v1",  
 ) -> Dict[str, Any]:
-    print("📥 analyze_from_api 진입", flush=True)
+    print("analyze_from_api 진입", flush=True)
 
     if not texts:
-        print("⚠️ 입력 문장 없음", flush=True)
+        print("입력 문장 없음", flush=True)
         return {
             "error": "분석할 문장이 없습니다.",
             "status": 400,
@@ -119,16 +120,16 @@ def analyze_from_api(
     try:
         _ensure_resources(model_name, centroids_path)
 
-        print("🧠 compute_fluency 시작", flush=True)
+        print("compute_fluency 시작", flush=True)
         flu_score, fS, fK, fC = _call_metric(compute_fluency, texts, centroids_path, model_name)
-        print("✅ compute_fluency 완료:", flu_score, flush=True)
+        print("compute_fluency 완료:", flu_score, flush=True)
 
-        print("🧠 compute_persistence 시작", flush=True)
+        print("compute_persistence 시작", flush=True)
         pers_score, pS, pR, pF = _call_metric(compute_persistence, texts, centroids_path, model_name)
-        print("✅ compute_persistence 완료:", pers_score, flush=True)
+        print("compute_persistence 완료:", pers_score, flush=True)
 
         creativity_score = (flu_score * 0.5 + pers_score * 0.5)
-        print("🎯 최종 점수:", creativity_score, flush=True)
+        print("최종 점수:", creativity_score, flush=True)
 
         return {
             "status": 200,
@@ -155,7 +156,7 @@ def analyze_from_api(
 
 
     except Exception as e:
-        print("❌ 분석 중 예외 발생:", e, flush=True)
+        print("분석 중 예외 발생:", e, flush=True)
         return {
             "error": str(e),
             "status": 500,
@@ -172,84 +173,36 @@ def healthz():
 
 @app.route("/analyze", methods=["POST"], strict_slashes=False)
 def analyze_route():
-    # 0) 원문 확보 (디버깅용)
-    raw = request.get_data(cache=False, as_text=True)
-
-    # 1) JSON 먼저 시도 (조용히)
-    data = None
-    try:
-        data = json.loads(raw) if raw else request.get_json(silent=True)
-    except Exception:
-        data = None
-
-    chat_id = None
-    texts = []
-
-    if isinstance(data, dict):
-        chat_id = data.get("chatId") or data.get("chat_id") or data.get("chatid")
-        texts = data.get("promptContents")
-        if texts is None:
-            texts = data.get("texts", [])
-
-
-    # 2) JSON이 아니거나 비어있으면 폼으로 시도
-    if not texts:
-        lst = request.form.getlist("promptContents")
-        if not lst:
-            lst = request.form.getlist("texts")
-        if not lst:
-            single = request.form.get("promptContent") or request.form.get("text")
-            if single:
-                lst = [single]
-        texts = lst
-        if chat_id is None:
-            cid = request.form.get("chatId") or request.form.get("chat_id") or request.form.get("chatid")
-            chat_id = cid
-
-    # 정규화
-    if isinstance(texts, str):
-        texts = [texts]
-    elif isinstance(texts, (list, tuple)):
-        norm = []
-        for x in texts:
-            if isinstance(x, dict):
-                v = x.get("content") or x.get("text") or x.get("value")
-                if v:
-                    norm.append(str(v))
-            elif isinstance(x, str):
-                norm.append(x)
-        texts = norm or []
-    else:
-        texts = []
-
-    # 숫자화(선택)
-    try:
-        chat_id = int(chat_id) if chat_id is not None else None
-    except Exception:
-        pass
-
-    if not texts:
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
         return jsonify({
-            "error": "Missing prompts",
-            "status": 400,
-            "hint": "Send JSON with either {chatId, promptContents:[...]} or {texts:[...]}. "
-                    "Form-data also supported (repeat promptContents).",
-            "preview": (raw[:200] if raw else "")
+            "error": "Invalid JSON. Expect an object.",
+            "status": 400
         }), 400
 
-    # 어떤 키가 수용됐는지 기록
-    used_key = "promptContents" if data and data.get("promptContents") is not None else \
-               ("texts" if data and data.get("texts") is not None else
-                ("form:promptContents" if request.form.getlist("promptContents") else
-                 ("form:texts" if request.form.getlist("texts") else None)))
+    chat_id = None
+    texts = data.get("promptContents")
+    if not isinstance(texts, list) or not all(isinstance(x, str) for x in texts):
+        return jsonify({
+            "error": "Invalid 'promptContents'. Must be a list of strings.",
+            "status": 400
+        }), 400
+    texts = [t.strip() for t in texts if isinstance(t, str) and t.strip()]
+    if not texts:
+        return jsonify({
+            "error": "No non-empty strings in 'promptContents'.",
+            "status": 400
+        }), 400
+    
+    model_name = data.get("model_name") or "skt/kobert-base-v1"
+    centroids_path = data.get("centroids_path") or DEFAULT_CENTROIDS_PATH
 
-    model_name = (data or {}).get("model_name", "skt/kobert-base-v1") if data else "skt/kobert-base-v1"
-    centroids_path = (data or {}).get("centroids_path", DEFAULT_CENTROIDS_PATH) if data else DEFAULT_CENTROIDS_PATH
+    print(f"[API] analyze: n_texts={len(texts)}, model='{model_name}', centroids='{centroids_path}', chat_id={chat_id}", flush=True)
 
     result = analyze_from_api(texts, centroids_path=centroids_path, model_name=model_name)
     if chat_id is not None:
         result["chatId"] = chat_id
-    result["accepted_key"] = used_key or "normalized"
+    result["accepted_key"] = "promptContents"
 
     code = result.get("status", 200)
     return jsonify(result), int(code)
