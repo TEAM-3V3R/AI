@@ -100,7 +100,7 @@ def _call_metric(func, texts: List[str], centroids_path: str, model_name: str) -
 def analyze_from_api(
     texts: List[str],
     centroids_path: str = DEFAULT_CENTROIDS_PATH,
-    model_name: str = "skt/kobert-base-v1",  
+    model_name: str = "klue/bert-base",  
 ) -> Dict[str, Any]:
     print("analyze_from_api 진입", flush=True)
 
@@ -189,7 +189,7 @@ def analyze_route():
             "status": 400
         }), 400
     
-    model_name = data.get("model_name") or "skt/kobert-base-v1"
+    model_name = data.get("model_name") or "klue/bert-base"
     centroids_path = data.get("centroids_path") or DEFAULT_CENTROIDS_PATH
 
     print(f"[API] analyze: n_texts={len(texts)}, model='{model_name}', centroids='{centroids_path}', chat_id={chat_id}", flush=True)
@@ -213,7 +213,7 @@ if __name__ == "__main__":
     ap.add_argument("--debug", action="store_true", default=True)
     ap.add_argument("--selftest", action="store_true", help="샘플 문장으로 로컬 분석만 수행하고 종료")
     ap.add_argument("--centroids", default=DEFAULT_CENTROIDS_PATH, help="override centroids path")
-    ap.add_argument("--model", default="skt/kobert-base-v1")
+    ap.add_argument("--model", default="klue/bert-base")
     args = ap.parse_args()
 
     if args.selftest:
