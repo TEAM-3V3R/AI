@@ -26,12 +26,10 @@ def analyze_route():
             "status": 400
         }), 400
 
-    chat_id = data.get("chatId") or data.get("chat_id")
     model_name = data.get("model_name") or "klue/bert-base"
     centroids_path = data.get("centroids_path") or DEFAULT_CENTROIDS_PATH
 
-    print(f"[Analyzer] n_texts={len(texts)}, model='{model_name}', centroids='{centroids_path}', chat_id={chat_id}", flush=True)
-
+    print(f"[Analyzer] n_texts={len(texts)}, model='{model_name}', centroids='{centroids_path}'", flush=True)
     try:
         result = analyze_from_api(
             texts,
@@ -45,10 +43,6 @@ def analyze_route():
             "status": 500
         }), 500
 
-
-    if chat_id is not None:
-        result["chatId"] = chat_id
-    result["accepted_key"] = "promptContents"
-
-    code = int(result.get("status", 200))
-    return jsonify(result), int(code)
+    if isinstance(result, dict) and "error" in result:
+        return jsonify(result), int(result.get("status", 500))
+    return jsonify(result), 200
