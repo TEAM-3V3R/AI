@@ -27,7 +27,7 @@ def analyze_route():
         }), 400
 
     chat_id = data.get("chatId") or data.get("chat_id")
-    model_name = data.get("model_name") or "skt/kobert-base-v1"
+    model_name = data.get("model_name") or "klue/bert-base"
     centroids_path = data.get("centroids_path") or DEFAULT_CENTROIDS_PATH
 
     print(f"[Analyzer] n_texts={len(texts)}, model='{model_name}', centroids='{centroids_path}', chat_id={chat_id}", flush=True)
