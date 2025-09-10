@@ -2,12 +2,9 @@
 분석 API
 - POST /analyze : {"chatId": <int?>, "promptContents": [<str>, ...], "model_name"?, "centroids_path"?}
 - GET  /healthz  : 헬스체크
-- 기본 실행      : python -m AI.prompt_analyzer.analyzer_api 
-- 로컬 셀프테스트: python -m AI.prompt_analyzer.analyzer_api --selftest
 """
 
 import os
-import json
 import datetime
 from pathlib import Path
 from typing import Any, Dict, Tuple, List
@@ -15,8 +12,6 @@ from typing import Any, Dict, Tuple, List
 import numpy as np
 import torch
 from transformers import AutoTokenizer, AutoModel
-from flask import Flask, request, jsonify
-from flask_cors import CORS
 
 # --- import ---
 try:
@@ -26,7 +21,6 @@ except Exception:
     from prompt_analyzer.fluency import compute_fluency  # type: ignore
     from prompt_analyzer.persistence import compute_persistence  # type: ignore
 
-# KoBERT
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
 os.environ.setdefault("TRANSFORMERS_NO_FLAX", "1")
@@ -132,26 +126,21 @@ def analyze_from_api(
         print("최종 점수:", creativity_score, flush=True)
 
         return {
-            "status": 200,
-            "message": "분석이 성공적으로 완료되었습니다.",
-            "results": [
-                {
-                    "creativity": round(creativity_score, 4),
-                    "fluency": round(flu_score, 4),
-                    "persistence": round(pers_score, 4),
-                    "fluency_skc": {
-                        "fluency_s": round(fS, 4),
-                        "fluency_k": round(fK, 4),
-                        "fluency_c": round(fC, 4),
-                    },
-                    "persistence_srf": {
-                        "persistence_s": round(pS, 4),
-                        "persistence_r": round(pR, 4),
-                        "persistence_f": round(pF, 4)
-                    }
-                }
-            ]
+            "fluency": round(flu_score, 4),
+            "persistence": round(pers_score, 4),
+            "creativity": round(creativity_score, 4),
+            "fluencySkc": {
+                "fluency_s": round(fS, 4),
+                "fluency_k": round(fK, 4),
+                "fluency_c": round(fC, 4),
+            },
+            "persistenceSrf": {
+                "persistence_s": round(pS, 4),
+                "persistence_r": round(pR, 4),
+                "persistence_f": round(pF, 4)
+            }
         }
+
 
 
 
@@ -162,79 +151,3 @@ def analyze_from_api(
             "status": 500,
             "timestamp": datetime.datetime.now().isoformat(),
         }
-
-# Flask 앱 (엔드포인트)
-app = Flask(__name__)
-CORS(app)
-
-@app.route("/healthz", methods=["GET"])
-def healthz():
-    return jsonify({"status": "ok"}), 200
-
-@app.route("/analyze", methods=["POST"], strict_slashes=False)
-def analyze_route():
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({
-            "error": "Invalid JSON. Expect an object.",
-            "status": 400
-        }), 400
-
-    chat_id = None
-    texts = data.get("promptContents")
-    if not isinstance(texts, list) or not all(isinstance(x, str) for x in texts):
-        return jsonify({
-            "error": "Invalid 'promptContents'. Must be a list of strings.",
-            "status": 400
-        }), 400
-    texts = [t.strip() for t in texts if isinstance(t, str) and t.strip()]
-    if not texts:
-        return jsonify({
-            "error": "No non-empty strings in 'promptContents'.",
-            "status": 400
-        }), 400
-    
-    model_name = data.get("model_name") or "klue/bert-base"
-    centroids_path = data.get("centroids_path") or DEFAULT_CENTROIDS_PATH
-
-    print(f"[API] analyze: n_texts={len(texts)}, model='{model_name}', centroids='{centroids_path}', chat_id={chat_id}", flush=True)
-
-    result = analyze_from_api(texts, centroids_path=centroids_path, model_name=model_name)
-    if chat_id is not None:
-        result["chatId"] = chat_id
-    result["accepted_key"] = "promptContents"
-
-    code = result.get("status", 200)
-    return jsonify(result), int(code)
-
-
-# 메인: 기본은 서버 실행, --selftest 시 샘플 출력 후 종료
-if __name__ == "__main__":
-    import argparse
-
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--host", default="0.0.0.0")
-    ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", "5000")))
-    ap.add_argument("--debug", action="store_true", default=True)
-    ap.add_argument("--selftest", action="store_true", help="샘플 문장으로 로컬 분석만 수행하고 종료")
-    ap.add_argument("--centroids", default=DEFAULT_CENTROIDS_PATH, help="override centroids path")
-    ap.add_argument("--model", default="klue/bert-base")
-    args = ap.parse_args()
-
-    if args.selftest:
-        samples = [
-            "안개 낀 숲길을 홀로 걷는 사람",
-            "강아지가 뛰노는 푸른 들판",
-            "도시의 밤거리를 달리는 자동차",
-            "아이들이 공원에서 뛰어노는 장면",
-            "바닷가에서 서핑을 즐기는 청년",
-            "책상 위에 펼쳐진 고서와 만년필",
-            "하늘 높이 떠 있는 열기구",
-            "밤하늘을 수놓는 불꽃놀이",
-            "유리창 너머로 비가 내리는 풍경",
-            "산 정상에서 일출을 바라보는 등산객",
-        ]
-        out = analyze_from_api(samples, centroids_path=args.centroids, model_name=args.model)
-        print(json.dumps(out, ensure_ascii=False, indent=2))
-    else:
-        app.run(host=args.host, port=args.port, debug=args.debug)
