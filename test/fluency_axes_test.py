@@ -1,14 +1,4 @@
 # test/fluency_axes_test.py
-"""
-Fluency 3-axis test
-- Sentence diversity (S)
-- Lexical diversity (K)
-- Semantic diversity (C)
-
-Purpose:
-Verify that S/K/C respond only to intended changes,
-and that sentence repetition penalty suppresses false fluency.
-"""
 
 import sys
 from pathlib import Path

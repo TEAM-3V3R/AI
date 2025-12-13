@@ -133,17 +133,18 @@ def analyze_from_api(
             "fluency": round(flu_score, 4),
             "persistence": round(pers_score, 4),
             "creativity": round(creativity_score, 4),
-            "fluencySkc": {
-                "fluency_s": round(fS, 4),
-                "fluency_k": round(fK, 4),
-                "fluency_c": round(fC, 4),
-            },
-            "persistenceSrf": {
-                "persistence_s": round(pS, 4),
-                "persistence_r": round(pR, 4),
-                "persistence_f": round(pF, 4)
-            }
-        }
+
+            "fluencySkc": [
+                round(fS, 4),  
+                round(fK, 4),  
+                round(fC, 4),  
+            ],
+            "persistenceSrf": [
+                round(pS, 4),  
+                round(pR, 4),  
+                round(pF, 4),  
+        ],
+}
 
 
 
