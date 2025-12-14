@@ -1,4 +1,4 @@
-# AI/prompt_analyzer/categories.py
+# 카테고리 분류
 
 import os
 import json

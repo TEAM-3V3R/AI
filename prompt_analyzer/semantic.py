@@ -1,5 +1,4 @@
-# 의미 토큰 추출 모듈 : extract_meaning_tokens 함수 구현 예정
-
+# 의미 토큰 추출 모듈 : extract_meaning_tokens 함수 구현
 from prompt_analyzer.preprocessor import extract_morphs
 
 def extract_meaning_tokens(text: str) -> list[str]:

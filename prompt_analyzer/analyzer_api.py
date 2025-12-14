@@ -16,6 +16,7 @@ from transformers import AutoTokenizer, AutoModel
 from prompt_analyzer.fluency import compute_fluency  
 from prompt_analyzer.persistence import compute_persistence  
 
+# 환경 변수 설정
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
 os.environ.setdefault("TRANSFORMERS_NO_FLAX", "1")
@@ -23,6 +24,8 @@ os.environ.setdefault("TRANSFORMERS_NO_JAX", "1")
 
 # 기본 센트로이드 경로
 _THIS_DIR = Path(__file__).resolve().parent
+
+# 센트로이드 파일 자동 탐색
 _DEFAULT_CENTROIDS_CANDIDATES = [
     _THIS_DIR / "DPDT" / "models" / "kmeans_k100" / "centroids.npy",
     _THIS_DIR.parent / "DPDT" / "models" / "kmeans_k100" / "centroids.npy",
@@ -38,12 +41,15 @@ def _default_centroids_path() -> str:
 
 DEFAULT_CENTROIDS_PATH = _default_centroids_path()
 
+# 전역 캐시
 _TOKENIZER = None
 _MODEL = None
 _DEVICE = None
 _CENTROIDS = None          
 _CENTROIDS_TAG = None      
 
+
+# 모델 / 토크나이저 로딩 (최초 1회)
 def _ensure_resources(model_name: str, centroids_path: str) -> None:
     global _TOKENIZER, _MODEL, _DEVICE, _CENTROIDS, _CENTROIDS_TAG
 
@@ -91,6 +97,7 @@ def _call_metric(func, texts: List[str], centroids_path: str, model_name: str) -
         return float(score), float(S), float(K), float(C)
     return float(val), 0.0, 0.0, 0.0
 
+# api 결과 생성
 def analyze_from_api(
     texts: List[str],
     centroids_path: str = DEFAULT_CENTROIDS_PATH,
@@ -98,6 +105,7 @@ def analyze_from_api(
 ) -> Dict[str, Any]:
     print("analyze_from_api 진입", flush=True)
 
+    # 입력 검증
     if not texts:
         print("입력 문장 없음", flush=True)
         return {
@@ -117,6 +125,7 @@ def analyze_from_api(
         pers_score, pS, pR, pF = _call_metric(compute_persistence, texts, centroids_path, model_name)
         print("compute_persistence 완료:", pers_score, flush=True)
 
+        # 최종 점수
         creativity_score = (flu_score * 0.5 + pers_score * 0.5)
         print("최종 점수:", creativity_score, flush=True)
 
@@ -124,17 +133,18 @@ def analyze_from_api(
             "fluency": round(flu_score, 4),
             "persistence": round(pers_score, 4),
             "creativity": round(creativity_score, 4),
-            "fluencySkc": {
-                "fluency_s": round(fS, 4),
-                "fluency_k": round(fK, 4),
-                "fluency_c": round(fC, 4),
-            },
-            "persistenceSrf": {
-                "persistence_s": round(pS, 4),
-                "persistence_r": round(pR, 4),
-                "persistence_f": round(pF, 4)
-            }
-        }
+
+            "fluencySkc": [
+                round(fS, 4),  
+                round(fK, 4),  
+                round(fC, 4),  
+            ],
+            "persistenceSrf": [
+                round(pS, 4),  
+                round(pR, 4),  
+                round(pF, 4),  
+        ],
+}
 
 
 
