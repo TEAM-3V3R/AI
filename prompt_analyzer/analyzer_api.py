@@ -130,19 +130,19 @@ def analyze_from_api(
         print("최종 점수:", creativity_score, flush=True)
 
         return {
-            "fluency": round(flu_score, 4),
-            "persistence": round(pers_score, 4),
-            "creativity": round(creativity_score, 4),
+            "fluency": round(flu_score, 2),
+            "persistence": round(pers_score, 2),
+            "creativity": round(creativity_score, 2),
 
             "fluencySkc": [
-                round(fS, 4),  
-                round(fK, 4),  
-                round(fC, 4),  
+                round(fS, 2),  
+                round(fK, 2),  
+                round(fC, 2),  
             ],
             "persistenceSrf": [
-                round(pS, 4),  
-                round(pR, 4),  
-                round(pF, 4),  
+                round(pS, 2),  
+                round(pR, 2),  
+                round(pF, 2),  
         ],
 }
 
