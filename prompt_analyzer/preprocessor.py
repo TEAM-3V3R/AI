@@ -10,12 +10,12 @@ os.environ["CUDA_VISIBLE_DEVICES"] = ""
 logger = logging.getLogger(__name__)
 
 # 0) 띄어쓰기 교정기 (옵션)
-try:
-    from pykospacing import Spacing
-    spacing = Spacing()
-except Exception:
-    spacing = None
-    logging.warning("[preprocessor] pykospacing 미설치 → 띄어쓰기 교정 건너뜀")
+# try:
+#    from pykospacing import Spacing
+#    spacing = Spacing()
+# except Exception:
+#    spacing = None
+#    logging.warning("[preprocessor] pykospacing 미설치 → 띄어쓰기 교정 건너뜀")
 
 # 1) 경로 설정
 BASE_DIR: Path = Path(__file__).resolve().parents[1]
