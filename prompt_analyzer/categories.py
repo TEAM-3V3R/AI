@@ -48,25 +48,30 @@ _super_names = None
 # 품사 허용( MeCab + Okt )
 POS_ALLOWED = {"NNG", "NNP", "NP", "VA", "Noun", "Adjective"}
 
-
+# 키워드 우선 분류 사전
 KW2SUPER_JSON = DATA_DIR / "category_keywords.json"
 _kw2super = {}
 
 # 리소스 로드
 def _load_super_mapping():
-    """runtime_categories.json 우선, 없으면 super_map.json(+super_names.json)"""
     global _centroid_to_super, _super_names
 
     if RUNTIME_JSON.exists():
         cfg = json.loads(RUNTIME_JSON.read_text(encoding="utf-8"))
+
         c2s = cfg.get("centroid_to_super")
+        if c2s is None:
+            raise ValueError("runtime_categories.json missing 'centroid_to_super'")
+        
         if isinstance(c2s, dict):
             K = len(c2s)
             _centroid_to_super = [int(c2s[str(i)]) for i in range(K)]
         else:
             _centroid_to_super = [int(x) for x in c2s]
+    
         names = cfg.get("super_names") or {}
         _super_names = {str(k): v for k, v in names.items()}
+
         logging.info("[categories] mapping: runtime_categories.json loaded")
         return
 
@@ -93,6 +98,7 @@ def _load_super_mapping():
 
     logging.info("[categories] mapping: super_map.json(+names) loaded")
 
+# 초기 설정
 def _init():
     global _tokenizer, _model, _device, _kmeans, _kw2super
     if _tokenizer is not None:
@@ -106,6 +112,7 @@ def _init():
 
     if not CENTROIDS_PATH.exists():
         raise FileNotFoundError(f"centroids not found: {CENTROIDS_PATH}")
+    
     cents = np.load(CENTROIDS_PATH).astype(np.float64)
     _kmeans = KMeans(n_clusters=cents.shape[0], n_init=1, random_state=42)
     _kmeans.cluster_centers_ = cents
@@ -113,7 +120,7 @@ def _init():
 
     _load_super_mapping()
 
-    # 키워드 룩업
+    # 키워드 룩업 - category_keywords.json 우선
     if KW2SUPER_JSON.exists():
         cat_kw = json.loads(KW2SUPER_JSON.read_text(encoding="utf-8"))
         _kw2super = {kw: cat for cat, kws in cat_kw.items() for kw in kws}
@@ -128,10 +135,12 @@ def _init():
 
 # 임베딩 & 예측
 def _embed_word(word: str) -> np.ndarray:
+    """단어 단위 BERT 임베딩(mean pooling)"""
     with torch.no_grad():
         toks = _tokenizer(word, return_tensors="pt", add_special_tokens=True)
-        toks.pop("token_type_ids", None)
+        toks.pop("token_type_ids", None)  # 일부 모델에서만 존재
         toks = {k: v.to(_device) for k, v in toks.items()}
+
         out = _model(**toks).last_hidden_state  # (1, L, H)
 
         if "attention_mask" in toks:
@@ -142,16 +151,26 @@ def _embed_word(word: str) -> np.ndarray:
         emb = (out * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1e-9)  # (1, H)
         return emb[0].detach().cpu().numpy().astype(np.float64)
 
+
 def _super_name_from_cid(cid: int) -> str:
+    """centroid id -> super id -> super label"""
     sid = _centroid_to_super[cid]
     return _super_names.get(str(sid), f"super_{sid}")
 
-def _predict_super_from_word(word: str) -> str:
+
+def _predict_super_from_word(word: str) -> tuple[str, str]:
+    """
+    returns: (label, source)
+      source: 'keyword' | 'model'
+    """
     if word in _kw2super:
-        return _kw2super[word]
+        return _kw2super[word], "keyword"
+
+    # fallback: 모델
     emb = _embed_word(word)
     cid = int(_kmeans.predict([emb])[0])
-    return _super_name_from_cid(cid)
+    return _super_name_from_cid(cid), "model"
+
 
 # API
 @categories_bp.route("/predict", methods=["POST"])
@@ -161,34 +180,43 @@ def predict_route():
         prompt_id = data.get("promptId")
         text = (data.get("promptContent") or "").strip()
 
-        if not prompt_id:
+        if prompt_id is None:
             return jsonify({"error": "promptId is required"}), 400
         if not text:
             return jsonify({"error": "promptContent is required"}), 400
 
         _init()
 
-        # 형태소 추출
         morphs = extract_morphs(text)
 
         results = []
         seen_words = set()
 
-        # 명사/형용사만 카테고리 예측
+        keyword_hits = 0
+        model_hits = 0
+        missed = []
+
+        # 형태소 기반(명사/형용사만)
         for w, pos in morphs:
             if pos not in POS_ALLOWED:
                 continue
             if w in seen_words:
                 continue
             try:
-                sname = _predict_super_from_word(w)
+                label, src = _predict_super_from_word(w)
                 results.append({
                     "text": w,
-                    "classification": sname,
-                    "category": sname   
+                    "classification": label,
+                    "category": label,
+                    "source": src,   # 내부용(응답에서는 빼도 됨)
                 })
                 seen_words.add(w)
+                if src == "keyword":
+                    keyword_hits += 1
+                else:
+                    model_hits += 1
             except Exception:
+                missed.append(w)
                 continue
 
         # 형태소에서 하나도 못 잡았을 때: 공백 단위 폴백
@@ -198,16 +226,22 @@ def predict_route():
                 if not w or w in seen_words:
                     continue
                 try:
-                    sname = _predict_super_from_word(w)
+                    label, src = _predict_super_from_word(w)
                     results.append({
                         "text": w,
-                        "classification": sname,
-                        "category": sname 
+                        "classification": label,
+                        "category": label,
+                        "source": src,
                     })
                     seen_words.add(w)
+                    if src == "keyword":
+                        keyword_hits += 1
+                    else:
+                        model_hits += 1
                 except Exception:
+                    missed.append(w)
                     continue
-            
+
         arr = [
             {
                 "text": item["text"],
@@ -220,30 +254,13 @@ def predict_route():
         payload = {"results": arr}
 
         logging.info(
-            "[categories] n=%d, preview=%s",
-            len(arr), json.dumps(payload, ensure_ascii=False)[:200]
+            "[categories] n=%d, keyword=%d, model=%d, missed=%d, preview=%s",
+            len(arr), keyword_hits, model_hits, len(set(missed)),
+            json.dumps(payload, ensure_ascii=False)[:200]
         )
+
         return jsonify(payload), 200
 
     except Exception as e:
         logging.exception("category/predict error")
         return jsonify({"error": str(e)}), 500
-
-# 로컬 테스트
-if __name__ == "__main__":
-    _init()
-    samples = [
-        "야외 농구 코트를 배경으로 덩크슛을 하는 남자",
-        "부엌에서 케이크를 장식하는 제빵사",
-        "지하철 플랫폼에서 노란 우산을 든 여자",
-        "바닷가에서 서핑보드를 타는 소년",
-    ]
-    for s in samples:
-        outs = []
-        for w, pos in extract_morphs(s):
-            if pos in POS_ALLOWED:
-                try:
-                    outs.append((w, _predict_super_from_word(w)))
-                except Exception:
-                    pass
-        print(f"[{s}] → {outs[:6]}")
