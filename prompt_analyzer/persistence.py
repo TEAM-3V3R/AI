@@ -98,12 +98,26 @@ def compute_persistence(
         tokens.extend(w for w, _ in extract_morphs(t))
 
     T = len(tokens)
-    if T > 0:
+    if T > 1:
         cnts = np.array(list(Counter(tokens).values()), dtype=np.float64)
         p = cnts / cnts.sum()
+
+        # 반복 집중도 확인
         simpson = float(np.sum(p * p))
+        min_simpson = 1.0 / T
+        R0 = (simpson - min_simpson) / (1.0 - min_simpson) 
+        R0 = float(np.clip(R0, 0.0, 1.0))
+
+        # 길이 보정
         small_pen = 1.0 - np.exp(-T / tau_r)
-        R = np.clip(simpson * small_pen, r_floor, 1.0)
+
+        # 낮으면 floor 고정, 높으면 상승
+        gate = 0.10
+        if R <= gate : 
+            R = r_floor
+        else : 
+            up = ((R0 - gate) / (1.0 - gate)) * small_pen_
+            R = r_floor + (1.0 - r_floor) * float(np.clip(up, 0.0, 1.0))
     else:
         R = 0.0
 
